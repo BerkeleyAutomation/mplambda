@@ -1,0 +1,459 @@
+#pragma once
+#ifndef MPL_PCFOREST_HPP
+#define MPL_PCFOREST_HPP
+
+#include "interpolate.hpp"
+#include "planner.hpp"
+
+#include <deque>
+#include <random>
+#include <thread>
+#include <type_traits>
+#include <vector>
+#include <omp.h>
+#include <jilog.hpp>
+#include <nigh/auto_strategy.hpp>
+
+namespace mpl {
+    class PCForest {};
+    
+    template <class Scenario>
+    class Planner<Scenario, PCForest> {
+        using Space = typename Scenario::Space;
+        using State = typename Scenario::State;
+        using Distance = typename Scenario::Distance;
+
+        static_assert(std::is_floating_point_v<Distance>, "distance must be a floating point type");
+        
+        using RNG = std::mt19937_64;
+        
+        class Edge;
+        class Node;
+        struct NodeKey;
+        class Thread;
+
+        using Concurrency = unc::robotics::nigh::Concurrent;
+        using NNStrategy = unc::robotics::nigh::auto_strategy_t<Space, Concurrency>;
+
+        using Neighborhood = std::vector<std::tuple<Node*, Distance>>;
+
+        static constexpr Distance E = 2.71828182845904523536028747135266249775724709369995L;
+        
+        Scenario scenario_;
+
+        unc::robotics::nigh::Nigh<Node*, Space, NodeKey, Concurrency, NNStrategy> nn_;
+
+        Distance maxDistance_{std::numeric_limits<Distance>::infinity()};
+
+        std::atomic<Edge*> solution_{nullptr};
+        
+        std::vector<Thread> threads_;
+
+        Distance kRRG_;
+
+        decltype(auto) randomSample(RNG& rng) {
+            return scenario_.randomSample(rng);
+        }
+
+        decltype(auto) sampleGoal(RNG& rng) {
+            return scenario_.sampleGoal(rng);
+        }
+        
+        decltype(auto) nearest(const State& q) {
+            return nn_.nearest(q);
+        }
+
+        void nearest(Neighborhood& nbh, const State& q) {
+            unsigned k = std::ceil(kRRG_ * std::log(Distance(nn_.size() + 1)));
+            nn_.nearest(nbh, q, k);
+        }
+        
+        decltype(auto) isValid(const State& q) {
+            return scenario_.isValid(q);
+        }
+
+        decltype(auto) isValid(const State& from, const State& to) {
+            return scenario_.isValid(from, to);
+        }
+
+        Distance distance(const State& a, const State& b) const {
+            return scenario_.space().distance(a, b);
+        }
+
+        decltype(auto) isGoal(const State& q) const {
+            return scenario_.isGoal(q);
+        }
+
+        void addNode(Node *node) {
+            nn_.insert(node);
+        }
+
+        void updateSolution(Edge *edge, bool newSample) {
+            Edge *prevSolution = solution_.load(std::memory_order_acquire);
+            while (prevSolution == nullptr || edge->pathCost() < prevSolution->pathCost()) {
+                if (solution_.compare_exchange_weak(
+                        prevSolution, edge,
+                        std::memory_order_release,
+                        std::memory_order_relaxed))
+                {
+                    const char *msg = prevSolution == nullptr
+                        ? "found initial solution with cost "
+                        : (edge->node() == prevSolution->node()
+                           ? "solution improved, new cost "
+                           : (newSample
+                              ? "new solution found with cost "
+                              : "solution goal reverted, new cost "));
+                    JI_LOG(INFO) << msg << edge->pathCost(); //  << ", after " << elapsedSolveTime();
+                    // TODO: send update to other processes
+                    break;
+                }
+            }
+        }
+        
+    public:
+        template <class ... Args>
+        Planner(Args&& ... args)
+            : scenario_(std::forward<Args>(args)...)
+            , kRRG_{E * (1 + 1/static_cast<Distance>(scenario_.space().dimensions()))}
+        {
+            int nThreads = std::max(1, omp_get_max_threads());
+            threads_.reserve(nThreads);
+            std::random_device rdev;
+            std::array<typename RNG::result_type, RNG::state_size> rdata;
+            for (int i=0 ; i<nThreads ; ++i) {
+                std::generate(rdata.begin(), rdata.end(), std::ref(rdev));
+                std::seed_seq sseq(rdata.begin(), rdata.end());
+                threads_.emplace_back(sseq);
+            }
+
+            setGoalBias(0.01);
+        }
+
+        void setGoalBias(Distance d) {
+            threads_[0].setGoalBias(d * threads_.size());
+        }
+
+        bool isSolved() const {
+            return solution_.load(std::memory_order_relaxed) != nullptr;
+        }
+
+        void addStart(const State& q) {
+            threads_[0].addStart(*this, q);
+        }
+
+        std::size_t size() const {
+            return nn_.size();
+        }
+
+        template <class Fn>
+        void solution(Fn fn) const {
+            for (const Edge* edge = solution_.load(std::memory_order_acquire) ;
+                 edge != nullptr ;
+                 edge = edge->parent())
+                fn(edge->node()->state());
+        }
+
+        template <class DoneFn>
+        void solve(DoneFn doneFn) {
+            int nThreads = threads_.size();
+            JI_LOG(INFO) << "solving on " << nThreads << " threads";
+            std::atomic_bool done{false};
+#pragma omp parallel for shared(done) schedule(static, 1) num_threads(nThreads)
+            for (int i=0 ; i<nThreads ; ++i) {
+                try {
+                    if (int tNo = omp_get_thread_num()) {
+                        threads_[tNo].solve(*this, [&] { return done.load(std::memory_order_relaxed); });
+                    } else {
+                        threads_[0].solve(*this, doneFn);
+                        done.store(true);
+                    }
+                } catch (const std::exception& ex) {
+                    JI_LOG(ERROR) << "solve died with exception: " << ex.what();
+                }
+            }
+        }
+    };
+
+    template <class Scenario>
+    class Planner<Scenario, PCForest>::Node {
+        State state_;
+        std::atomic<Edge*> edge_;
+        bool goal_;
+
+    public:
+        Node(bool goal, const State& q)
+            : state_(q)
+            , edge_{nullptr}
+            , goal_(goal)
+        {
+        }
+        
+        bool isGoal() const {
+            return goal_;
+        }
+
+        const State& state() const {
+            return state_;
+        }
+
+        Edge* edge(std::memory_order mo) {
+            return edge_.load(mo);
+        }
+
+        bool casEdge(Edge *expect, Edge *value, std::memory_order success, std::memory_order failure) {
+            return edge_.compare_exchange_weak(expect, value, success, failure);
+        }
+    };
+
+    template <class Scenario>
+    class Planner<Scenario, PCForest>::Edge {
+        Node *node_;
+        Edge *parent_;
+        Distance edgeCost_;
+        Distance pathCost_;
+
+        std::atomic<Edge*> firstChild_{nullptr};
+        std::atomic<Edge*> nextSibling_{nullptr};
+
+        void addChild(Edge *child) {
+            Edge *next = firstChild_.load(std::memory_order_relaxed);
+            do {
+                child->nextSibling_.store(next, std::memory_order_relaxed);
+            } while (!firstChild_.compare_exchange_weak(
+                         next, child,
+                         std::memory_order_release,
+                         std::memory_order_relaxed));
+        }
+
+    public:
+        Edge(const Edge&) = delete;
+        Edge(Edge&&) = delete;
+
+        Edge(Node *node)
+            : node_(node)
+            , parent_(nullptr)
+            , edgeCost_(0)
+            , pathCost_(0)
+        {
+        }
+
+        Edge(Node *node, Edge *parent, Distance edgeCost, Distance pathCost)
+            : node_(node)
+            , parent_(parent)
+            , edgeCost_(edgeCost)
+            , pathCost_(pathCost)
+        {
+            assert(parent->pathCost_ + edgeCost == pathCost_);
+            parent->addChild(this);
+        }
+
+        Node* node() {
+            return node_;
+        }
+
+        const Node* node() const {
+            return node_;
+        }
+
+        Distance pathCost() const {
+            return pathCost_;
+        }
+        
+        Distance edgeCost() const {
+            return edgeCost_;
+        }
+
+        const Edge *parent() const {
+            return parent_;
+        }
+
+        Edge *firstChild(std::memory_order order) {
+            return firstChild_.load(order);
+        }
+
+        Edge *nextSibling(std::memory_order order) {
+            return nextSibling_.load(order);
+        }
+
+        bool casFirstChild(Edge*& expect, Edge* value, std::memory_order success, std::memory_order failure) {
+            return firstChild_.compare_exchange_weak(expect, value, success, failure);
+        }
+    };
+
+    template <class Scenario>
+    struct Planner<Scenario, PCForest>::NodeKey {
+        const State& operator() (const Node* node) const {
+            return node->state();
+        }
+    };
+
+    template <class Scenario>
+    class Planner<Scenario, PCForest>::Thread {
+        using ParentCandidate = std::tuple<Distance, Edge*, std::size_t>;
+        
+        struct ParentHeapCompare {
+            bool operator() (const ParentCandidate& a, const ParentCandidate& b) {
+                return std::get<Distance>(a) > std::get<Distance>(b);
+            }
+        };
+        
+        RNG rng_;
+        std::deque<Node> nodes_;
+        std::deque<Edge> edges_;
+        Neighborhood nbh_;
+        std::vector<ParentCandidate> parentHeap_;
+
+        Distance goalBias_{0};
+
+    public:
+        template <class SSeq>
+        Thread(SSeq& sseq)
+            : rng_(sseq)
+        {
+        }
+
+        void setGoalBias(Distance d) {
+            goalBias_ = d;
+        }
+
+        void addStart(Planner& planner, const State& q) {
+            if (!planner.isValid(q))
+                throw std::invalid_argument("start state is not valid");
+            
+            bool isGoal = planner.isGoal(q);
+            Node *newNode = &nodes_.emplace_back(isGoal, q);
+            Edge *newEdge = &edges_.emplace_back(newNode);
+            setEdge(planner, newNode, newEdge);
+            planner.addNode(newNode);
+        }
+
+        void addSample(Planner& planner, State qRand) {
+            auto [nNear, dNear] = planner.nearest(qRand).value();
+
+            if (dNear > planner.maxDistance_) {
+                qRand = interpolate(nNear->state(), qRand, planner.maxDistance_ / dNear);
+                dNear = planner.distance(nNear->state(), qRand);
+            }
+
+            if (dNear == 0 || dNear == planner.distance(qRand, qRand))
+                return;
+
+            if (!planner.isValid(nNear->state(), qRand))
+                return;
+
+            bool isGoal = planner.isGoal(qRand);
+            Edge *parent = nNear->edge(std::memory_order_relaxed);
+            Distance parentCost = parent->pathCost() + dNear;
+
+            // get the neighborhood for rewiring
+            planner.nearest(nbh_, qRand);
+
+            // check if any in the neighborhood would make a better
+            // parent than the current one.  We check in increasing
+            // order of pathCost up to the pathCost of the nearest
+            // node.
+            parentHeap_.clear();
+            for (std::size_t nbrIndex=0 ; nbrIndex<nbh_.size() ; ++nbrIndex) {
+                auto [ nbrNode, nbrDist ] = nbh_[nbrIndex];
+                Edge *nbrEdge = nbrNode->edge(std::memory_order_acquire);
+                Distance nbrPathCost = nbrEdge->pathCost() + nbrDist;
+                if (nbrPathCost >= parentCost)
+                    break;
+                parentHeap_.emplace_back(nbrPathCost, nbrEdge, nbrIndex);
+            }
+            std::make_heap(parentHeap_.begin(), parentHeap_.end(), ParentHeapCompare{});
+            while (!parentHeap_.empty()) {
+                auto [ nbrPathCost, nbrEdge, nbrIndex ] = parentHeap_.front();
+                std::get<Node*>(nbh_[nbrIndex]) = nullptr; // mark neighbor as already checked
+                if (planner.isValid(nbrEdge->node()->state(), qRand)) {
+                    parent = nbrEdge;
+                    dNear = std::get<Distance>(nbh_[nbrIndex]);
+                    parentCost = nbrPathCost;
+                    break;
+                }
+                std::pop_heap(parentHeap_.begin(), parentHeap_.end(), ParentHeapCompare{});
+                parentHeap_.pop_back();
+            }
+
+            // now that we have the parent, create the node, and add
+            // it to the tree.  After this, other threads may access
+            // the node.
+            Node *newNode = &nodes_.emplace_back(isGoal, qRand);
+            Edge *newEdge = &edges_.emplace_back(newNode, parent, dNear, parentCost);
+            setEdge(planner, newNode, newEdge);
+            planner.addNode(newNode);
+
+            if (isGoal)
+                planner.updateSolution(newEdge, true);
+
+            // last stage of rewiring, check to see if any neighboring
+            // nodes can be rewired to have a shorter path through the
+            // new node.
+            for (auto it = nbh_.rbegin() ; it != nbh_.rend() ; ++it) {
+                auto [ nbrNode, nbrDist ] = *it;
+
+                // if nbrNode is null then we already checked it for
+                // rewiring as a parent and rejected it since it could
+                // not connect to the new node.
+                if (nbrNode == nullptr)
+                    continue;
+
+                Edge *nbrEdge = nbrNode->edge(std::memory_order_acquire);
+                Distance newCost = parentCost + nbrDist;
+                if (newCost < nbrEdge->pathCost() && planner.isValid(newNode->state(), nbrNode->state()))
+                    setEdge(planner, nbrNode, &edges_.emplace_back(nbrNode, newEdge, nbrDist, newCost));
+            }
+        }
+
+        void setEdge(Planner& planner, Node* node, Edge* newEdge) {
+            Edge *oldEdge = node->edge(std::memory_order_relaxed);
+            for (;;) {
+                if (oldEdge && oldEdge->pathCost() <= newEdge->pathCost()) {
+                    std::swap(oldEdge, newEdge);
+                    break;
+                }
+
+                if (node->casEdge(oldEdge, newEdge, std::memory_order_release, std::memory_order_relaxed))
+                    break;
+            }
+
+            if (node->isGoal())
+                planner.updateSolution(newEdge, false);
+
+            if (oldEdge == nullptr)
+                return;
+
+            do {
+                Edge *firstChild = oldEdge->firstChild(std::memory_order_relaxed);
+                while (!oldEdge->casFirstChild(
+                           firstChild, nullptr,
+                           std::memory_order_release,
+                           std::memory_order_relaxed))
+                    ;
+                for (Edge *oldChild = firstChild ; oldChild ; oldChild = oldChild->nextSibling(std::memory_order_acquire)) {
+                    Node *childNode = oldChild->node();
+                    Edge *shorterEdge = &edges_.emplace_back(
+                        childNode, newEdge, oldChild->edgeCost(), newEdge->pathCost() + oldChild->edgeCost());
+                    setEdge(planner, childNode, shorterEdge);
+                }
+                oldEdge = newEdge;
+                newEdge = node->edge(std::memory_order_acquire);
+            } while (oldEdge != newEdge);
+        }
+
+        State randomSample(Planner& planner) {
+            static std::uniform_real_distribution<Distance> unif01;
+            return (goalBias_ > 0 && goalBias_ < unif01(rng_))
+                ? planner.sampleGoal(rng_)
+                : planner.randomSample(rng_);
+        }
+
+        template <class DoneFn>
+        void solve(Planner& planner, DoneFn done) {
+            while (!done())
+                addSample(planner, randomSample(planner));
+        }
+    };
+}
+
+#endif
