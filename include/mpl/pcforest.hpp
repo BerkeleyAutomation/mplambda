@@ -44,19 +44,29 @@ namespace mpl {
         unc::robotics::nigh::Nigh<Node*, Space, NodeKey, Concurrency, NNStrategy> nn_;
 
         Distance maxDistance_{std::numeric_limits<Distance>::infinity()};
-
-        std::atomic<Edge*> solution_{nullptr};
         
+        std::optional<State> qStart_;
+        std::atomic<Edge*> solution_{nullptr};
         std::vector<Thread> threads_;
 
         Distance kRRG_;
 
-        decltype(auto) randomSample(RNG& rng) {
-            return scenario_.randomSample(rng);
-        }
+        State randomSample(RNG& rng, Distance goalBias) {
+            static std::uniform_real_distribution<Distance> unif01;
 
-        decltype(auto) sampleGoal(RNG& rng) {
-            return scenario_.sampleGoal(rng);
+            Edge *s = solution_.load(std::memory_order_acquire);
+
+            if (s == nullptr)
+                return (goalBias > 0 && goalBias < unif01(rng))
+                    ? scenario_.sampleGoal(rng)
+                    : scenario_.randomSample(rng);
+                
+            State q;
+            do {
+                q = scenario_.randomSample(rng);
+            } while (s->pathCost() < distance(*qStart_, q) + distance(q, s->node()->state()));
+            
+            return q;
         }
         
         decltype(auto) nearest(const State& q) {
@@ -138,6 +148,7 @@ namespace mpl {
         }
 
         void addStart(const State& q) {
+            qStart_ = q;
             threads_[0].addStart(*this, q);
         }
 
@@ -155,6 +166,9 @@ namespace mpl {
 
         template <class DoneFn>
         void solve(DoneFn doneFn) {
+            if (!qStart_)
+                throw std::logic_error("start state must be set before calling solve()");
+            
             int nThreads = threads_.size();
             JI_LOG(INFO) << "solving on " << nThreads << " threads";
             std::atomic_bool done{false};
@@ -441,17 +455,10 @@ namespace mpl {
             } while (oldEdge != newEdge);
         }
 
-        State randomSample(Planner& planner) {
-            static std::uniform_real_distribution<Distance> unif01;
-            return (goalBias_ > 0 && goalBias_ < unif01(rng_))
-                ? planner.sampleGoal(rng_)
-                : planner.randomSample(rng_);
-        }
-
         template <class DoneFn>
         void solve(Planner& planner, DoneFn done) {
             while (!done())
-                addSample(planner, randomSample(planner));
+                addSample(planner, planner.randomSample(rng_, goalBias_));
         }
     };
 }
