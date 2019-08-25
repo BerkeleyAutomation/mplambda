@@ -186,11 +186,18 @@ namespace mpl {
         return str.str();
     }
 
+    // returns a pair of process-id and pipe-fd associated with the
+    // child process
     template <class S>
     std::pair<int, int> launchLambda(std::uint64_t pId, packet::ProblemSE3<S>& prob) {
+        static const std::string resourceDirectory = "../../resources/";
         static int lambdaId;
         ++lambdaId;
 
+        // We create a pipe solely for tracking when a child process
+        // terminates.  When the child terminates, it will
+        // automatically close its end of the pipe, causing a POLLHUP
+        // event in the poll() loop.
         int p[2];
         if (::pipe(p) == -1)
             throw std::system_error(errno, std::system_category(), "pipe");
@@ -208,9 +215,10 @@ namespace mpl {
         Eigen::IOFormat fmt(Eigen::FullPrecision, Eigen::DontAlignCols, ",", ",", "", "", "", "");
 
         std::string path = "./mpl_lambda";
-        
-        // std::string env = prob.envMesh();
-        // std::string robot = prob.robotMesh();
+
+        std::string problemId = std::to_string(pId);
+        std::string env = resourceDirectory + prob.envMesh();
+        std::string robot = resourceDirectory + prob.robotMesh();
 
         std::string start = to_string(
             std::get<0>(prob.start()).coeffs().format(fmt), ",",
@@ -226,8 +234,9 @@ namespace mpl {
             path.c_str(),
             "--coordinator=localhost",
             "--algorithm=rrt",
-            "--env", prob.envMesh().c_str(),
-            "--robot", prob.robotMesh().c_str(),
+            "-I", problemId.c_str(),
+            "--env", env.c_str(),
+            "--robot", robot.c_str(),
             "--start", start.c_str(),
             "--goal", goal.c_str(),
             "--min", min.c_str(),

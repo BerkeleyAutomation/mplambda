@@ -2,6 +2,8 @@
 #include <mpl/buffer.hpp>
 #include <mpl/write_queue.hpp>
 #include <mpl/packet.hpp>
+#include <mpl/demo/se3_app_options.hpp>
+#include <mpl/demo/se3_rigid_body_scenario.hpp>
 #include <netdb.h>
 #include <getopt.h>
 #include <iostream>
@@ -126,45 +128,56 @@ static void usage(const char *argv0) {
 }
 
 int main(int argc, char *argv[]) try {
-    static struct option longopts[] = {
-        { "coordinator", required_argument, NULL, 'c' },
+    using S = double;
+    using Scenario = mpl::demo::SE3RigidBodyScenario<S>;
+    mpl::demo::SE3AppOptions<Scenario> options(argc, argv);
+    // static struct option longopts[] = {
+    //     { "coordinator", required_argument, NULL, 'c' },
         
-        { NULL, 0, NULL, 0 }
-    };
+    //     { NULL, 0, NULL, 0 }
+    // };
 
-    std::string coordinator;
+    // std::string coordinator;
 
-    for (int ch ; (ch = getopt_long(argc, argv, "c:", longopts, NULL)) != -1 ; ) {
-        switch (ch) {
-        case 'c':
-            coordinator = optarg;
-            break;
-        default:
-            usage(argv[0]);
-            return EXIT_FAILURE;
-        }
-    }
+    // for (int ch ; (ch = getopt_long(argc, argv, "c:", longopts, NULL)) != -1 ; ) {
+    //     switch (ch) {
+    //     case 'c':
+    //         coordinator = optarg;
+    //         break;
+    //     default:
+    //         usage(argv[0]);
+    //         return EXIT_FAILURE;
+    //     }
+    // }
 
-    if (coordinator.empty())
+    // if (coordinator.empty())
+    //     throw std::invalid_argument("--coordinator is required");
+
+    if (options.coordinator().empty())
         throw std::invalid_argument("--coordinator is required");
-
+    
     mpl::RobotClient robot;
 
-    using S = double;
-    std::tuple<Eigen::Quaternion<S>, Eigen::Matrix<S, 3, 1>> start, goal;
-    Eigen::Matrix<S, 3, 1> min;
-    Eigen::Matrix<S, 3, 1> max;
+    // std::tuple<Eigen::Quaternion<S>, Eigen::Matrix<S, 3, 1>> start, goal;
+    // Eigen::Matrix<S, 3, 1> min;
+    // Eigen::Matrix<S, 3, 1> max;
 
-    std::get<Eigen::Quaternion<S>>(start).setIdentity();
-    std::get<Eigen::Matrix<S, 3, 1>>(start) << 100, 200, 300;
-    std::get<Eigen::Quaternion<S>>(goal).setIdentity();
-    std::get<Eigen::Matrix<S, 3, 1>>(goal) << 500, 600, 700;
+    // std::get<Eigen::Quaternion<S>>(start).setIdentity();
+    // std::get<Eigen::Matrix<S, 3, 1>>(start) << 100, 200, 300;
+    // std::get<Eigen::Quaternion<S>>(goal).setIdentity();
+    // std::get<Eigen::Matrix<S, 3, 1>>(goal) << 500, 600, 700;
 
-    min << -1, -3, -7;
-    max << 1e3, 2e3, 3e3;
+    // min << -1, -3, -7;
+    // max << 1e3, 2e3, 3e3;
     
-    robot.connect(coordinator);
-    robot.sendProblemSE3("Twistycool_env.dae", "Twistycool_robot.dae", start, goal, min, max);
+    robot.connect(options.coordinator());
+    robot.sendProblemSE3(
+        options.env(),
+        options.robot(),
+        options.start(),
+        options.goal(),
+        options.min(),
+        options.max());
     robot.loop();
 
     return EXIT_SUCCESS;
