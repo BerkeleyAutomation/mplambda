@@ -172,6 +172,7 @@ namespace mpl {
         }
 
         void setGoalBias(Distance d) {
+            JI_LOG(TRACE) << "thread goal bias set to " << d;
             goalBias_ = d;
         }
 
@@ -200,7 +201,7 @@ namespace mpl {
 
         State randomSample(Planner& planner) {
             static std::uniform_real_distribution<Distance> unif01;
-            return (goalBias_ > 0 && goalBias_ < unif01(rng_))
+            return (goalBias_ > 0 && unif01(rng_) < goalBias_)
                 ? planner.sampleGoal(rng_)
                 : planner.randomSample(rng_);
         }

@@ -57,7 +57,7 @@ namespace mpl {
             Edge *s = solution_.load(std::memory_order_acquire);
 
             if (s == nullptr)
-                return (goalBias > 0 && goalBias < unif01(rng))
+                return (goalBias > 0 && unif01(rng) < goalBias)
                     ? scenario_.sampleGoal(rng)
                     : scenario_.randomSample(rng);
                 

@@ -121,7 +121,7 @@ namespace mpl::demo {
             std::size_t nVertices = visitVertices(
                 scene,
                 scene->mRootNode,
-                Transform::Identity(),
+                rootTransform,
                 [&] (const Vec3& v) { center += v; });
             center /= nVertices;
             rootTransform *= Eigen::Translation<S, 3>(-center);
@@ -208,10 +208,11 @@ namespace mpl::demo {
         vertices.clear();
         extractTriangles(aiScene, aiScene->mRootNode, aiMatrix4x4(), vertices);
         assert(vertices.size() % 3 == 0);
-        
-        if (shiftToCenter)
+
+        if (shiftToCenter) {
             for (auto& j : vertices)
                 j -= center;
+        }
 
         for (auto& j : vertices)
             pts.emplace_back(j[0], j[1], j[2]);
@@ -459,11 +460,11 @@ namespace mpl::demo {
                 return true;
 
             Distance delta = 1 / Distance(steps);
-            for (std::size_t i = 1 ; i < steps ; ++i)
-                if (!isValid(interpolate(from, to, i*delta)))
-                    return false;
+            // for (std::size_t i = 1 ; i < steps ; ++i)
+            //     if (!isValid(interpolate(from, to, i*delta)))
+            //         return false;
             
-            if (true) return true;
+            // if (true) return true;
             
             std::array<std::pair<std::size_t, std::size_t>, 1024> queue;
             queue[0] = std::make_pair(std::size_t(1), steps-1);
