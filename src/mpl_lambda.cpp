@@ -102,13 +102,19 @@ namespace mpl::demo {
                 comm_.process();
                 return planner.isSolved();
             });
-            //comm_.done();
+            
 
             JI_LOG(INFO) << "solution " << (planner.isSolved() ? "" : "not ") << "found after " << (Clock::now() - start);
             JI_LOG(INFO) << "graph size = " << planner.size();
-            planner.solution([] (const State& q) {
-                    JI_LOG(INFO) << "  " << q;
-                });
+            planner.solution([] (const State& q) { JI_LOG(INFO) << "  " << q; });
+
+            if (planner.isSolved()) {
+                std::vector<State> path;
+                planner.solution([&] (const State& q) { path.push_back(q); });
+                comm_.sendPath(std::move(path));
+            }
+            
+            comm_.done();
         }
 
         void run() {

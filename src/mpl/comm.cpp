@@ -129,3 +129,14 @@ void mpl::Comm::process() {
         abort();
     }
 }
+
+void mpl::Comm::done() {
+    int nonBlocking = 0;
+    if (::ioctl(socket_, FIONBIO, reinterpret_cast<char*>(&nonBlocking)) == -1)
+        JI_LOG(INFO) << "set blocking failed (" << errno << ")";
+
+    writeQueue_.push_back(packet::Done(problemId_));
+    while (!writeQueue_.empty())
+        writeQueue_.writeTo(socket_);
+}
+

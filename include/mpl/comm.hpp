@@ -5,6 +5,7 @@
 #include <string>
 #include <netdb.h>
 #include "write_queue.hpp"
+#include "packet.hpp"
 
 namespace mpl {
     class Comm {
@@ -44,7 +45,19 @@ namespace mpl {
         
         void connect(const std::string& host, int port = DEFAULT_PORT);
         void process();
+
+        template <class S>
+        void sendPath(std::vector<std::tuple<Eigen::Quaternion<S>, Eigen::Matrix<S, 3, 1>>>&& path);
+
+        void done();
     };
+
 }
+
+template <class S>
+void mpl::Comm::sendPath(std::vector<std::tuple<Eigen::Quaternion<S>, Eigen::Matrix<S, 3, 1>>>&& path) {
+    writeQueue_.push_back(packet::PathSE3<S>(std::move(path)));
+}
+
 
 #endif

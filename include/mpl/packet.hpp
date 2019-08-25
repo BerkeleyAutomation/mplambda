@@ -10,8 +10,11 @@ namespace mpl::packet {
     using Type = std::uint32_t;
     using Size = std::uint32_t;
 
+    // hexdump -n 4 -e '"0x" 1 "%08x" "\n"' /dev/urandom 
     static constexpr Type PROBLEM_SE3 = 0xdbb69672;
     static constexpr Type HELLO = 0x3864caca;
+    static constexpr Type PATH_SE3 = 0xa9cb6e7d;
+    static constexpr Type DONE = 0x6672e31a;
 
     static constexpr std::size_t MAX_PACKET_SIZE = 1024*1024;
 
@@ -183,6 +186,80 @@ namespace mpl::packet {
         }
     };
 
+    class Done {
+        std::uint64_t id_;
+        
+    public:
+        explicit Done(std::uint64_t id)
+            : id_(id)
+        {
+        }
+
+        explicit Done(Type type, BufferView buf)
+            : id_(buf.get<std::uint64_t>())
+        {
+        }
+
+        std::uint64_t id() const {
+            return id_;
+        }
+        
+        operator Buffer () const {
+            Size size = 16;
+            Buffer buf{size};
+            buf.put(DONE);
+            buf.put(size);
+            buf.put(id_);
+            buf.flip();
+            return buf;
+        }
+    };
+
+    template <class S>
+    class PathSE3 {
+        using State = std::tuple<Eigen::Quaternion<S>, Eigen::Matrix<S, 3, 1>>;
+        static constexpr std::size_t stateSize_ = buffer_size_v<State>;
+        static constexpr Type TYPE = PATH_SE3 + sizeof(S)/8;
+            
+        std::vector<State> path_;
+
+    public:
+        explicit PathSE3(std::vector<State>&& path)
+            : path_(std::move(path))
+        {
+        }
+
+        inline PathSE3(Type, BufferView buf) {
+            if (buf.remaining() % stateSize_ != 0)
+                throw protocol_error("invalid path packet size: " + std::to_string(buf.remaining()));
+
+            std::size_t n = buf.remaining() / stateSize_;
+            path_.reserve(n);
+            while (path_.size() < n)
+                path_.emplace_back(buf.get<State>());
+        }
+
+        inline operator Buffer () const {
+            Size size = buffer_size_v<Type> + buffer_size_v<Size>
+                + stateSize_ * path_.size();
+            Buffer buf{size};
+            buf.put(TYPE);
+            buf.put(size);
+            for (const State& q : path_)
+                buf.put(q);
+            buf.flip();
+            return buf;
+        }
+
+        const std::vector<State>& path() const & {
+            return path_;
+        }
+
+        std::vector<State>&& path() && {
+            return std::move(path_);
+        }
+    };
+
     template <class Fn>
     std::size_t parse(Buffer& buf, Fn fn) {
         static constexpr auto head = buffer_size_v<Type> + buffer_size_v<Size>;
@@ -211,11 +288,20 @@ namespace mpl::packet {
         case HELLO:
             fn(Hello(type, buf.view(size)));
             break;
+        case DONE:
+            fn(Done(type, buf.view(size)));
+            break;            
         case PROBLEM_SE3:
             fn(ProblemSE3<float>(type, buf.view(size)));
             break;
         case PROBLEM_SE3+1:
             fn(ProblemSE3<double>(type, buf.view(size)));
+            break;
+        case PATH_SE3:
+            fn(PathSE3<float>(type, buf.view(size)));
+            break;
+        case PATH_SE3+1:
+            fn(PathSE3<double>(type, buf.view(size)));
             break;
         default:
             throw protocol_error("bad packet type: " + std::to_string(type));

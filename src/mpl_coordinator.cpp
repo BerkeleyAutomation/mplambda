@@ -128,6 +128,10 @@ namespace mpl {
             JI_LOG(INFO) << "got HELLO (id=" << pkt.id() << ")";
         }
 
+        void process(packet::Done&& pkt) {
+            JI_LOG(INFO) << "got DONE (id=" << pkt.id() << ")";
+        }
+
         template <class S>
         void process(packet::ProblemSE3<S>&& pkt) {
             JI_LOG(INFO) << "got ProblemSE3 " << sizeof(S);
@@ -136,6 +140,13 @@ namespace mpl {
             
             auto it = coordinator_.newProblem(std::move(pkt), *this);
             problemId_ = it->first;
+        }
+
+        template <class S>
+        void process(packet::PathSE3<S>&& pkt) {
+            JI_LOG(INFO) << "got PathSE3 " << sizeof(S);
+            for (auto& q : pkt.path())
+                JI_LOG(TRACE) << "  " << q;
         }
         
     public:
