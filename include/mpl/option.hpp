@@ -49,9 +49,10 @@ namespace mpl {
     struct Option<Eigen::Quaternion<S>> {
         static Eigen::Quaternion<S> parse(const std::string& name, const char *arg, char **endp) {
             auto v = Option<Eigen::Matrix<S, 4, 1>>::parse(name, arg, endp);
-            Eigen::Quaternion<S> q;
-            q = Eigen::AngleAxis<S>{v[0], v.template tail<3>().normalized()};
-            return q;
+            // Eigen::Quaternion<S> q;
+            // q = Eigen::AngleAxis<S>{v[0], v.template tail<3>().normalized()};
+            // return q;
+            return Eigen::Quaternion<S>{v};
         }
     };
 

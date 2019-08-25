@@ -88,12 +88,14 @@ namespace mpl {
     public:
         template <class S>
         void sendProblemSE3(
+            const std::string& env,
+            const std::string& robot,
             const std::tuple<Eigen::Quaternion<S>, Eigen::Matrix<S, 3, 1>>& start,
             const std::tuple<Eigen::Quaternion<S>, Eigen::Matrix<S, 3, 1>>& goal,
             const Eigen::Matrix<S, 3, 1>& min,
             const Eigen::Matrix<S, 3, 1>& max)
         {
-            writeQueue_.push_back(packet::ProblemSE3<S>(start, goal, min, max));
+            writeQueue_.push_back(packet::ProblemSE3<S>(env, robot, start, goal, min, max));
         }
         
         void loop() {
@@ -162,7 +164,7 @@ int main(int argc, char *argv[]) try {
     max << 1e3, 2e3, 3e3;
     
     robot.connect(coordinator);
-    robot.sendProblemSE3(start, goal, min, max);
+    robot.sendProblemSE3("Twistycool_env.dae", "Twistycool_robot.dae", start, goal, min, max);
     robot.loop();
 
     return EXIT_SUCCESS;

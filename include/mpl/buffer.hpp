@@ -35,52 +35,44 @@ namespace mpl {
 
     template <class T>
     constexpr std::size_t buffer_size_v = buffer_size<T>::value;
-    
-    class Buffer {
-        char *base_;
+
+    class BufferView {
+    protected:
         char *position_;
         char *limit_;
-        std::size_t capacity_;
-        
     public:
-        Buffer()
-            : base_{nullptr}
-            , position_{nullptr}
+        BufferView()
+            : position_{nullptr}
             , limit_{nullptr}
-            , capacity_{0}
         {
         }
 
-        explicit Buffer(std::size_t n)
-            : base_{new char[n]}
-            , position_{base_}
-            , limit_{base_ + n}
-            , capacity_{n}
+        BufferView(const BufferView& other)
+            : position_(other.position_)
+            , limit_(other.limit_)
         {
         }
 
-        Buffer(const Buffer&) = delete;
-        Buffer(Buffer&& other)
-            : base_{std::exchange(other.base_, nullptr)}
-            , position_{std::exchange(other.position_, nullptr)}
+    protected:
+        BufferView(char *position, char *limit)
+            : position_(position)
+            , limit_(limit)
+        {
+        }
+        
+        BufferView(std::size_t n)
+            : position_(new char[n])
+            , limit_(position_ + n)
+        {
+        }
+
+        BufferView(BufferView&& other)
+            : position_{std::exchange(other.position_, nullptr)}
             , limit_{std::exchange(other.limit_, nullptr)}
-            , capacity_{std::exchange(other.capacity_, 0)}
         {
         }
 
-        ~Buffer() {
-            delete[] base_;
-        }
-
-        Buffer& operator = (const Buffer&) = delete;
-        Buffer& operator = (Buffer&& other) {
-            std::swap(base_, other.base_);
-            std::swap(position_, other.position_);
-            std::swap(limit_, other.limit_);
-            std::swap(capacity_, other.capacity_);
-            return *this;
-        }
-
+    public:
         char* begin() {
             return position_;
         }
@@ -99,41 +91,6 @@ namespace mpl {
 
         std::size_t remaining() const {
             return std::distance(position_, limit_);
-        }
-
-        Buffer& operator += (int i) {
-            position_ += i;
-            assert(position_ <= limit_);
-            return *this;
-        }
-
-        Buffer& flip() {
-            limit_ = position_;
-            position_ = base_;
-            return *this;
-        }
-
-        Buffer& compact() {
-            // move everything from [pos... lim) to [base...)
-            if (position_ != base_)
-                std::copy(position_, limit_, base_);
-            position_ = base_ + remaining();
-            limit_ = base_ + capacity_;
-            return *this;
-        }
-
-        Buffer& compact(std::size_t needed) {
-            if (needed <= capacity_)
-                return compact();
-
-            while ((capacity_ *= 2) < needed);
-            char *newBuf = new char[capacity_];
-            std::copy(position_, limit_, newBuf);
-            delete[] base_;
-            base_ = newBuf;
-            position_ = newBuf + remaining();
-            limit_ = newBuf + capacity_;
-            return *this;
         }
 
     private:
@@ -189,6 +146,19 @@ namespace mpl {
             return value;
         }
 
+        std::string getString(std::size_t n) {
+            std::string str{position_, position_ + n};
+            position_ += n;
+            assert(position_ <= limit_);
+            return str;
+        }
+
+        std::string getString() {
+            std::string str{position_, limit_};
+            position_ = limit_;
+            return str;
+        }
+
         template <class T>
         std::enable_if_t<std::is_arithmetic_v<T>>
         put(const T& value) {
@@ -213,6 +183,12 @@ namespace mpl {
             put(q.coeffs());
         }
 
+        void put(const std::string& str) {
+            assert(str.size() <= remaining());
+            std::copy(str.begin(), str.end(), position_);
+            position_ += str.size();
+        }
+
     private:
         template <class T, std::size_t ... I>
         void put(const T& tuple, std::index_sequence<I...>) {
@@ -224,6 +200,86 @@ namespace mpl {
         template <class ... T>
         void put(const std::tuple<T...>& tuple) {
             put(tuple, std::index_sequence_for<T...>{});
+        }
+
+        BufferView view(std::size_t n) {
+            assert(position_ + n <= limit_);
+            return { position_, position_ + n };
+        }
+    };
+    
+    class Buffer : public BufferView {
+        char *base_;
+        std::size_t capacity_;
+        
+    public:
+        Buffer()
+            : base_{nullptr}
+            , capacity_{0}
+        {
+        }
+
+        explicit Buffer(std::size_t n)
+            : BufferView(n)
+            , base_(BufferView::begin())
+            , capacity_{n}
+        {
+        }
+
+        Buffer(const Buffer&) = delete;
+        Buffer(Buffer&& other)
+            : BufferView(std::move(other))
+            , base_{std::exchange(other.base_, nullptr)}
+            , capacity_{std::exchange(other.capacity_, 0)}
+        {
+        }
+
+        ~Buffer() {
+            delete[] base_;
+        }
+
+        Buffer& operator = (const Buffer&) = delete;
+        Buffer& operator = (Buffer&& other) {
+            std::swap(BufferView::position_, other.position_);
+            std::swap(BufferView::limit_, other.limit_);
+            std::swap(base_, other.base_);
+            std::swap(capacity_, other.capacity_);
+            return *this;
+        }
+
+        Buffer& operator += (int i) {
+            position_ += i;
+            assert(position_ <= limit_);
+            return *this;
+        }
+
+        Buffer& flip() {
+            limit_ = position_;
+            position_ = base_;
+            return *this;
+        }
+
+        Buffer& compact() {
+            // move everything from [pos... lim) to [base...)
+            if (position_ != base_)
+                std::copy(position_, limit_, base_);
+            position_ = base_ + remaining();
+            limit_ = base_ + capacity_;
+            return *this;
+        }
+
+        Buffer& compact(std::size_t needed) {
+            if (needed <= capacity_)
+                return compact();
+
+            while ((capacity_ *= 2) < needed);
+            char *newBuf = new char[capacity_];
+            std::copy(position_, limit_, newBuf);
+            delete[] base_;
+            base_ = newBuf;
+            position_ = newBuf + remaining();
+            limit_ = newBuf + capacity_;
+            return *this;
         }
     };
 }

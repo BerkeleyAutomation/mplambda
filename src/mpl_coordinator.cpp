@@ -10,15 +10,22 @@
 #include <map>
 #include <sys/socket.h>
 #include <system_error>
-
+#include <unistd.h>
+#include <fcntl.h>
 
 namespace mpl {
+    template <class S>
+    std::pair<int, int> launchLambda(std::uint64_t pId, packet::ProblemSE3<S>& prob);
+
     class Coordinator {
         int listen_{-1};
 
         class Problem;
         class Connection;
 
+        std::uint64_t nextProblemId_{1};
+
+        std::list<std::pair<int, int>> childProcesses_;
         std::map<std::uint64_t, Problem> problems_;
         
     public:
@@ -55,13 +62,35 @@ namespace mpl {
                 JI_LOG(WARN) << "failed to close listening socket";                
         }
 
+        int accept(struct sockaddr *addr, socklen_t * addrLen) {
+            return ::accept(listen_, addr, addrLen);
+        }
+
         void loop();
+        
+        template <class S>
+        auto newProblem(packet::ProblemSE3<S>&& prob, Connection& initiator);
+        void removeProblem(std::uint64_t id, Connection& initiator);
     };
 
     class Coordinator::Problem {
+        Connection& initiator_;
+        
+        std::list<Connection*> lambdas_;
+        
+    public:
+        Problem(Connection& initiator)
+            : initiator_(initiator)
+        {
+        }
+
+        void broadcastDone() {
+        }
     };
 
     class Coordinator::Connection {
+        Coordinator& coordinator_;
+        
         struct sockaddr_in addr_;
         socklen_t addrLen_{sizeof(addr_)};
         
@@ -69,6 +98,8 @@ namespace mpl {
 
         Buffer rBuf_{1024*4};
         WriteQueue writeQueue_;
+
+        std::uint64_t problemId_{0};
 
         bool doRead() {
             assert(rBuf_.remaining() > 0); // we may need to grow the buffer
@@ -100,16 +131,25 @@ namespace mpl {
         template <class S>
         void process(packet::ProblemSE3<S>&& pkt) {
             JI_LOG(INFO) << "got ProblemSE3 " << sizeof(S);
+            if (problemId_)
+                coordinator_.removeProblem(problemId_, *this);
+            
+            auto it = coordinator_.newProblem(std::move(pkt), *this);
+            problemId_ = it->first;
         }
         
     public:
-        explicit Connection(int listen)
-            : socket_(::accept(listen, reinterpret_cast<struct sockaddr*>(&addr_), &addrLen_))
+        explicit Connection(Coordinator& coordinator)
+            : coordinator_(coordinator)
+            , socket_(coordinator.accept(reinterpret_cast<struct sockaddr*>(&addr_), &addrLen_))
         {
             JI_LOG(TRACE) << "connection accepted";
         }
         
         ~Connection() {
+            if (problemId_)
+                coordinator_.removeProblem(problemId_, *this);
+            
             JI_LOG(TRACE) << "closing connection";
             if (socket_ != -1 && ::close(socket_) == -1)
                 JI_LOG(WARN) << "connection close error: " << errno;
@@ -138,6 +178,105 @@ namespace mpl {
             }
         }
     };
+
+    template <class ... T>
+    std::string to_string(T&& ... args) {
+        std::ostringstream str;
+        (str << ... << std::forward<T>(args));
+        return str.str();
+    }
+
+    template <class S>
+    std::pair<int, int> launchLambda(std::uint64_t pId, packet::ProblemSE3<S>& prob) {
+        static int lambdaId;
+        ++lambdaId;
+
+        int p[2];
+        if (::pipe(p) == -1)
+            throw std::system_error(errno, std::system_category(), "pipe");
+
+        if (int pid = ::fork()) {
+            // parent process
+            ::close(p[1]);
+            return { pid, p[0] };
+        }
+
+        // child process
+        ::close(p[0]);
+            
+        // child process
+        Eigen::IOFormat fmt(Eigen::FullPrecision, Eigen::DontAlignCols, ",", ",", "", "", "", "");
+
+        std::string path = "./mpl_lambda";
+        
+        // std::string env = prob.envMesh();
+        // std::string robot = prob.robotMesh();
+
+        std::string start = to_string(
+            std::get<0>(prob.start()).coeffs().format(fmt), ",",
+            std::get<1>(prob.start()).format(fmt));
+        std::string goal = to_string(
+            std::get<0>(prob.goal()).coeffs().format(fmt), ",",
+            std::get<1>(prob.goal()).format(fmt));
+        
+        std::string min = to_string(prob.min().format(fmt));
+        std::string max = to_string(prob.max().format(fmt));
+        
+        const char * const argv[] = {
+            path.c_str(),
+            "--coordinator=localhost",
+            "--algorithm=rrt",
+            "--env", prob.envMesh().c_str(),
+            "--robot", prob.robotMesh().c_str(),
+            "--start", start.c_str(),
+            "--goal", goal.c_str(),
+            "--min", min.c_str(),
+            "--max", max.c_str(),
+            nullptr
+        };
+        
+        char file[20];
+        snprintf(file, sizeof(file), "lambda-%04d.out", lambdaId);
+        
+        // JI_LOG(TRACE) << "RUNNING Lambda: " <<
+        //     "./mpl_lambda"
+        std::ostringstream args;
+        for (int i=0 ; argv[i] ; ++i)
+            args << ' ' << argv[i];
+        JI_LOG(TRACE) << "Running lambda:" << args.str();
+        
+        int fd = ::open(file, O_RDWR | O_CREAT, S_IRUSR | S_IWUSR);
+        dup2(fd, 1); // make stdout write to file
+        dup2(fd, 2); // make stderr write to file
+        close(fd); // close fd, dups remain open
+        
+        execv(path.c_str(), const_cast<char*const*>(argv));
+        
+        // if exec returns, then there was a problem
+        throw std::system_error(errno, std::system_category(), "exec");
+    }
+
+    template <class S>
+    auto Coordinator::newProblem(packet::ProblemSE3<S>&& prob, Connection& initiator) {
+        auto [ it, inserted ] = problems_.emplace(nextProblemId_++, initiator);
+        assert(inserted);
+        auto id = it->first;
+
+        JI_LOG(INFO) << "starting new problem " << id;
+        int nLambdas = 4;
+        for (int i=0 ; i<nLambdas ; ++i)
+            childProcesses_.emplace_back(launchLambda(id, prob));
+        
+        return it;
+    }
+
+    void Coordinator::removeProblem(std::uint64_t id, Connection& initiator) {
+        auto it = problems_.find(id);
+        if (it != problems_.end()) {
+            it->second.broadcastDone();
+            problems_.erase(it);
+        }
+    }
 }
 
 void mpl::Coordinator::loop() {
@@ -146,8 +285,21 @@ void mpl::Coordinator::loop() {
 
     for (;;) {
         pfds.clear();
+
+        // first comes the fds of the child processes (note that
+        // connection processing may change the child process list, so
+        // this must be processed first)
+        for (auto [ pid, fd ] : childProcesses_) {
+            pfds.emplace_back();
+            pfds.back().fd = fd;
+            pfds.back().events = POLLIN;
+        }
+
+        // then et of pollfds is 1:1 with connections
         for (Connection& conn : connections)
             pfds.emplace_back(conn);
+
+        // then comes the accepting socket
         pfds.emplace_back();
         pfds.back().fd = listen_;
         pfds.back().events = POLLIN;
@@ -162,9 +314,28 @@ void mpl::Coordinator::loop() {
                 continue;
             throw std::system_error(errno, std::system_category(), "poll");
         }
-        
+
         auto pit = pfds.begin();
+        for (auto cit = childProcesses_.begin() ; cit != childProcesses_.end() ; ++pit) {
+            assert(pit != pfds.end());
+            
+            if ((pit->revents & POLLHUP) == 0) {
+                ++cit;
+            } else {
+                int stat = 0;
+                if (::waitpid(cit->first, &stat, 0) == -1)
+                    JI_LOG(WARN) << "waitpid failed with error: " << errno;
+                if (::close(cit->second) == -1)
+                    JI_LOG(WARN) << "close failed with error: " << errno;
+                JI_LOG(INFO) << "child process " << cit->first << " exited with status " << stat;
+                
+                cit = childProcesses_.erase(cit);
+            }
+        }
+
         for (auto cit = connections.begin() ; cit != connections.end() ; ++pit) {
+            assert(pit != pfds.end());
+            
             if (cit->process(*pit))
                 ++cit;
             else
@@ -176,7 +347,7 @@ void mpl::Coordinator::loop() {
         if (pit->revents & (POLLERR | POLLHUP))
             break;
         if (pit->revents & POLLIN) {
-            connections.emplace_back(listen_);
+            connections.emplace_back(*this);
             if (!connections.back()) {
                 JI_LOG(WARN) << "accept failed with error: " << errno;
                 connections.pop_back();

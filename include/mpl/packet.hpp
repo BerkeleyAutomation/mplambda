@@ -35,35 +35,51 @@ namespace mpl::packet {
         using Bound = Eigen::Matrix<S, 3, 1>;
 
         static constexpr Type TYPE = PROBLEM_SE3 + sizeof(S)/8;
-        
+
         State start_;
         State goal_;
         Bound min_;
         Bound max_;
-        
+
+        std::string envMesh_;
+        std::string robotMesh_;
+
     public:
-        ProblemSE3(const State& start, const State& goal,
-                   const Bound& min, const Bound& max)
+        inline ProblemSE3(
+            const std::string& envMesh,
+            const std::string& robotMesh,
+            const State& start, const State& goal,
+            const Bound& min, const Bound& max)
             : start_(start)
             , goal_(goal)
             , min_(min)
             , max_(max)
+            , envMesh_(envMesh)
+            , robotMesh_(robotMesh)
         {
         }
 
-        ProblemSE3(Type, Size, Buffer& buf)
+        inline ProblemSE3(Type, BufferView buf)
             : start_{buf.get<State>()}
             , goal_{buf.get<State>()}
             , min_{buf.get<Bound>()}
             , max_{buf.get<Bound>()}
         {
+            std::uint8_t len = buf.get<std::uint8_t>();
+            if (len > buf.remaining())
+                throw protocol_error("invalid string length in `problem` packet");
+            
+            envMesh_ = buf.getString(len);
+            robotMesh_ = buf.getString();
         }
 
-        operator Buffer () const {
-            Size size = buffer_size_v<Type> +
+        inline operator Buffer () const {
+            Size size =
+                buffer_size_v<Type> +
                 buffer_size_v<Size> +
                 buffer_size_v<State>*2 +
-                buffer_size_v<Bound>*2;
+                buffer_size_v<Bound>*2 + 1 +
+                envMesh_.size() + robotMesh_.size();
             
             Buffer buf{size};
             buf.put(TYPE);
@@ -72,23 +88,34 @@ namespace mpl::packet {
             buf.put(goal_);
             buf.put(min_);
             buf.put(max_);
+            buf.put(static_cast<std::uint8_t>(envMesh_.size()));
+            buf.put(envMesh_);
+            buf.put(robotMesh_);
             buf.flip();
             return buf;
         }
 
-        const auto& start() const {
+        inline const auto& envMesh() const {
+            return envMesh_;
+        }
+
+        inline const auto& robotMesh() const {
+            return robotMesh_;
+        }
+
+        inline const auto& start() const {
             return start_;
         }
 
-        const auto& goal() const {
+        inline const auto& goal() const {
             return goal_;
         }
 
-        const auto& min() const {
+        inline const auto& min() const {
             return min_;
         }
 
-        const auto& max() const {
+        inline const auto& max() const {
             return max_;
         }
     };
@@ -102,7 +129,7 @@ namespace mpl::packet {
         {
         }
 
-        explicit Hello(Type type, Size size, Buffer& buf)
+        explicit Hello(Type type, BufferView buf)
             : id_(buf.get<std::uint64_t>())
         {
         }
@@ -144,22 +171,23 @@ namespace mpl::packet {
         }
 
         buf += head;
+        size -= head;
         
         switch (type) {
         case HELLO:
-            fn(Hello(type, size, buf));
+            fn(Hello(type, buf.view(size)));
             break;
         case PROBLEM_SE3:
-            fn(ProblemSE3<float>(type, size, buf));
+            fn(ProblemSE3<float>(type, buf.view(size)));
             break;
         case PROBLEM_SE3+1:
-            fn(ProblemSE3<double>(type, size, buf));
+            fn(ProblemSE3<double>(type, buf.view(size)));
             break;
         default:
             throw protocol_error("bad packet type: " + std::to_string(type));
         }
 
-        assert(buf.begin() == start + size);
+        buf += size;
         
         return 0;
     }
