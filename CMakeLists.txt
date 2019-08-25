@@ -40,3 +40,5 @@ target_link_libraries(mpl_lambda Eigen3::Eigen Threads::Threads ${ASSIMP_LIBRARI
 
 add_executable(mpl_coordinator src/mpl_coordinator.cpp src/mpl/write_queue.cpp)
 # target_link_libraries(mpl_coordinator Threads::Threads)
+
+add_executable(mpl_robot src/mpl_robot.cpp src/mpl/write_queue.cpp)

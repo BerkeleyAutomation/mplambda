@@ -1,6 +1,7 @@
 #include <jilog.hpp>
 #include <mpl/buffer.hpp>
 #include <mpl/write_queue.hpp>
+#include <mpl/packet.hpp>
 #include <netinet/ip.h>
 #include <netinet/tcp.h>
 #include <poll.h>
@@ -70,7 +71,7 @@ namespace mpl {
         WriteQueue writeQueue_;
 
         bool doRead() {
-            assert(rBuf_.remaining() > 0);
+            assert(rBuf_.remaining() > 0); // we may need to grow the buffer
             
             ssize_t n = ::recv(socket_, rBuf_.begin(), rBuf_.remaining(), 0);
             JI_LOG(TRACE) << "recv " << n;
@@ -81,23 +82,23 @@ namespace mpl {
                 return false;
 
             rBuf_ += n;
-
             rBuf_.flip();
-            while (rBuf_.remaining() >= 8) {
-                std::uint32_t type = rBuf_.peek<std::uint32_t>(0);
-                std::uint32_t len = rBuf_.peek<std::uint32_t>(4);
-
-                if (rBuf_.remaining() < len)
-                    break;
-
-                JI_LOG(INFO) << "packet type " << type << ", len=" << len;
-
-                rBuf_ += len;
-            }
-
+            // call the appropriate process overload for each packet
+            // that arrives
+            while (packet::parse(rBuf_, [&] (auto&& pkt) {
+                        process(std::forward<decltype(pkt)>(pkt));
+                    }));
             rBuf_.compact();
-
             return true;
+        }
+
+        void process(packet::Hello&& pkt) {
+            JI_LOG(INFO) << "got HELLO (id=" << pkt.id() << ")";
+        }
+
+        template <class S>
+        void process(packet::ProblemSE3<S>&& pkt) {
+            JI_LOG(INFO) << "got ProblemSE3 " << sizeof(S);
         }
         
     public:
