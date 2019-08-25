@@ -13,6 +13,8 @@ namespace mpl::packet {
     static constexpr Type PROBLEM_SE3 = 0xdbb69672;
     static constexpr Type HELLO = 0x3864caca;
 
+    static constexpr std::size_t MAX_PACKET_SIZE = 1024*1024;
+
     class protocol_error : public std::runtime_error {
     public:
         protocol_error(const std::string& msg)
@@ -121,11 +123,11 @@ namespace mpl::packet {
     };
 
     template <class Fn>
-    bool parse(Buffer& buf, Fn fn) {
+    std::size_t parse(Buffer& buf, Fn fn) {
         static constexpr auto head = buffer_size_v<Type> + buffer_size_v<Size>;
             
         if (buf.remaining() < head)
-            return false;
+            return 8; // head - buf.remaining();
 
         // bounds checking
         char *start = buf.begin();
@@ -133,9 +135,12 @@ namespace mpl::packet {
         Type type = buf.peek<Type>(0);
         Size size = buf.peek<Size>(buffer_size_v<Type>);
 
+        if (size > MAX_PACKET_SIZE)
+            throw protocol_error("maximum packet size exceeded: " + std::to_string(size));
+
         if (buf.remaining() < size) {
             JI_LOG(TRACE) << "short packet recv, have " << buf.remaining() << ", need " << size;
-            return false;
+            return size; // size - buf.remaining();
         }
 
         buf += head;
@@ -156,7 +161,7 @@ namespace mpl::packet {
 
         assert(buf.begin() == start + size);
         
-        return true;
+        return 0;
     }
 }
 

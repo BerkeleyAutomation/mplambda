@@ -73,10 +73,11 @@ namespace mpl {
 
             rBuf_ += n;
             rBuf_.flip();
-            while (packet::parse(rBuf_, [&] (auto&& pkt) {
-                        process(std::forward<decltype(pkt)>(pkt));
-                    }));
-            rBuf_.compact();
+            std::size_t needed;
+            while ((needed = packet::parse(rBuf_, [&] (auto&& pkt) {
+                            process(std::forward<decltype(pkt)>(pkt));
+                        })) == 0);
+            rBuf_.compact(needed);
         }
 
         template <class T>

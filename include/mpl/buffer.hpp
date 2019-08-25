@@ -114,10 +114,25 @@ namespace mpl {
         }
 
         Buffer& compact() {
+            // move everything from [pos... lim) to [base...)
             if (position_ != base_)
                 std::copy(position_, limit_, base_);
             position_ = base_ + remaining();
             limit_ = base_ + capacity_;
+            return *this;
+        }
+
+        Buffer& compact(std::size_t needed) {
+            if (needed <= capacity_)
+                return compact();
+
+            while ((capacity_ *= 2) < needed);
+            char *newBuf = new char[capacity_];
+            std::copy(position_, limit_, newBuf);
+            delete[] base_;
+            base_ = newBuf;
+            position_ = newBuf + remaining();
+            limit_ = newBuf + capacity_;
             return *this;
         }
 
