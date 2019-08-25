@@ -76,27 +76,35 @@ namespace mpl::demo {
             JI_LOG(INFO) << "start: " << options_.start();
             JI_LOG(INFO) << "goal: " << options_.goal();
             JI_LOG(INFO) << "bounds: " << options_.min() << " to " << options_.max();
-    
+
+            double discretization = options_.discretization();
+            if (discretization <= 0)
+                discretization = 0.1;
+            
             Planner<Scenario, Algorithm> planner(
                 options_.env(),
                 options_.robot(),
                 options_.goal(),
                 options_.min(),
                 options_.max(),
-                0.1);
+                discretization);
             // envMesh_, robotMesh_, *qGoal_, *qMin_, *qMax_, 0.1};
 
             planner.addStart(options_.start());
 
             using Clock = std::chrono::steady_clock;
+            Clock::duration maxElapsedSolveTime = std::chrono::duration_cast<Clock::duration>(
+                std::chrono::duration<double>(options_.timeLimit()));
             auto start = Clock::now();
             planner.solve([&] {
+                if (maxElapsedSolveTime.count() > 0 && Clock::now() - start > maxElapsedSolveTime)
+                    return true;
                 comm_.process();
                 return planner.isSolved();
             });
             //comm_.done();
 
-            JI_LOG(INFO) << "solution found after " << (Clock::now() - start);
+            JI_LOG(INFO) << "solution " << (planner.isSolved() ? "" : "not ") << "found after " << (Clock::now() - start);
             JI_LOG(INFO) << "graph size = " << planner.size();
             planner.solution([] (const State& q) {
                     JI_LOG(INFO) << "  " << q;

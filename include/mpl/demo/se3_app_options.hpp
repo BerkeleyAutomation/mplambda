@@ -30,17 +30,22 @@ namespace mpl::demo {
         std::optional<Bound> qMin_;
         std::optional<Bound> qMax_;
 
+        double timeLimit_{std::numeric_limits<double>::infinity()};
+        double discretization_{0};
+
         static void usage() {
             std::cerr << R"(Usage: [options]
 Options:
   -c, --coordinator=HOST:PORT
   -I, --problem-id=ID
+  -t, --time-limit=TIME
   -e, --env=MESH
   -r, --robot=MESH
   -s, --start=W,I,J,K,X,Y,Z
   -g, --goal=W,I,J,K,X,Y,Z
   -m, --min=X,Y,Z
   -M, --max=X,Y,Z
+  -d, --discretization=DIST
 )";
         }
 
@@ -56,11 +61,13 @@ Options:
                 { "max", required_argument, NULL, 'M' },
                 { "coordinator", required_argument, NULL, 'c' },
                 { "problem-id", required_argument, NULL, 'I' },
+                { "time-limit", required_argument, NULL, 't' },
+                { "discretization", required_argument, NULL, 'd' },
                 
                 { NULL, 0, NULL, 0 }
             };
 
-            for (int ch ; (ch = getopt_long(argc, argv, "a:e:r:g:s:m:M:c:I:", longopts, NULL)) != -1 ; ) {
+            for (int ch ; (ch = getopt_long(argc, argv, "a:e:r:g:s:m:M:c:I:t:d:", longopts, NULL)) != -1 ; ) {
                 char *endp;
                 
                 switch (ch) {
@@ -92,6 +99,16 @@ Options:
                     problemId_ = strtoull(optarg, &endp, 0);
                     if (endp == optarg || *endp)
                         throw std::invalid_argument("bad value for --problem-id");
+                    break;
+                case 't':
+                    timeLimit_ = std::strtod(optarg, &endp);
+                    if (endp == optarg || *endp || timeLimit_ < 0)
+                        throw std::invalid_argument("bad value for --time-limit");
+                    break;
+                case 'd':
+                    discretization_ = std::strtod(optarg, &endp);
+                    if (endp == optarg || *endp || discretization_ <= 0)
+                        throw std::invalid_argument("bad value for --discretization");
                     break;
                 default:
                     usage();
@@ -125,6 +142,14 @@ Options:
 
         std::uint64_t problemId() const {
             return problemId_;
+        }
+
+        double timeLimit() const {
+            return timeLimit_;
+        }
+
+        double discretization() const {
+            return discretization_;
         }
 
         const auto& robot() const {

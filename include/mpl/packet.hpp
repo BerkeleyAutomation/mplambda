@@ -15,6 +15,9 @@ namespace mpl::packet {
 
     static constexpr std::size_t MAX_PACKET_SIZE = 1024*1024;
 
+    static constexpr std::uint32_t ALGORITHM_RRT = 1;
+    static constexpr std::uint32_t ALGORITHM_CFOREST = 2;
+    
     class protocol_error : public std::runtime_error {
     public:
         protocol_error(const std::string& msg)
@@ -41,6 +44,11 @@ namespace mpl::packet {
         Bound min_;
         Bound max_;
 
+        std::uint32_t algorithm_;
+        std::uint32_t timeLimitMillis_;
+
+        double discretization_;
+
         std::string envMesh_;
         std::string robotMesh_;
 
@@ -49,13 +57,19 @@ namespace mpl::packet {
             const std::string& envMesh,
             const std::string& robotMesh,
             const State& start, const State& goal,
-            const Bound& min, const Bound& max)
+            const Bound& min, const Bound& max,
+            std::uint32_t algorithm,
+            std::uint32_t timeLimitMillis,
+            double discretization)
             : start_(start)
             , goal_(goal)
             , min_(min)
             , max_(max)
             , envMesh_(envMesh)
             , robotMesh_(robotMesh)
+            , algorithm_(algorithm)
+            , timeLimitMillis_(timeLimitMillis)
+            , discretization_(discretization)
         {
         }
 
@@ -64,6 +78,9 @@ namespace mpl::packet {
             , goal_{buf.get<State>()}
             , min_{buf.get<Bound>()}
             , max_{buf.get<Bound>()}
+            , algorithm_{buf.get<std::uint32_t>()}
+            , timeLimitMillis_{buf.get<std::uint32_t>()}
+            , discretization_{buf.get<double>()}
         {
             std::uint8_t len = buf.get<std::uint8_t>();
             if (len > buf.remaining())
@@ -78,8 +95,10 @@ namespace mpl::packet {
                 buffer_size_v<Type> +
                 buffer_size_v<Size> +
                 buffer_size_v<State>*2 +
-                buffer_size_v<Bound>*2 + 1 +
-                envMesh_.size() + robotMesh_.size();
+                buffer_size_v<Bound>*2 +
+                buffer_size_v<std::uint32_t>*2 +
+                buffer_size_v<double> +
+                1 + envMesh_.size() + robotMesh_.size();
             
             Buffer buf{size};
             buf.put(TYPE);
@@ -88,6 +107,9 @@ namespace mpl::packet {
             buf.put(goal_);
             buf.put(min_);
             buf.put(max_);
+            buf.put(algorithm_);
+            buf.put(timeLimitMillis_);
+            buf.put(discretization_);
             buf.put(static_cast<std::uint8_t>(envMesh_.size()));
             buf.put(envMesh_);
             buf.put(robotMesh_);
@@ -117,6 +139,18 @@ namespace mpl::packet {
 
         inline const auto& max() const {
             return max_;
+        }
+
+        inline auto algorithm() const {
+            return algorithm_;
+        }
+
+        inline auto timeLimitMillis() const {
+            return timeLimitMillis_;
+        }
+
+        inline double discretization() const {
+            return discretization_;
         }
     };
     

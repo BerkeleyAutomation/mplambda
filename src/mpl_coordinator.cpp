@@ -220,6 +220,18 @@ namespace mpl {
         std::string env = resourceDirectory + prob.envMesh();
         std::string robot = resourceDirectory + prob.robotMesh();
 
+        std::string discretization = std::to_string(prob.discretization());
+
+        std::string alg;
+        if (prob.algorithm() == packet::ALGORITHM_RRT)
+            alg = "rrt";
+        else if (prob.algorithm() == packet::ALGORITHM_CFOREST)
+            alg = "cforest";
+        else
+            alg = "unknown";
+        
+        std::string timeLimit = std::to_string(prob.timeLimitMillis() / 1e3);
+        
         std::string start = to_string(
             std::get<0>(prob.start()).coeffs().format(fmt), ",",
             std::get<1>(prob.start()).format(fmt));
@@ -233,8 +245,10 @@ namespace mpl {
         const char * const argv[] = {
             path.c_str(),
             "--coordinator=localhost",
-            "--algorithm=rrt",
+            "--algorithm", alg.c_str(),
             "-I", problemId.c_str(),
+            "-t", timeLimit.c_str(),
+            "-d", discretization.c_str(),
             "--env", env.c_str(),
             "--robot", robot.c_str(),
             "--start", start.c_str(),

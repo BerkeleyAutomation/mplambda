@@ -95,9 +95,23 @@ namespace mpl {
             const std::tuple<Eigen::Quaternion<S>, Eigen::Matrix<S, 3, 1>>& start,
             const std::tuple<Eigen::Quaternion<S>, Eigen::Matrix<S, 3, 1>>& goal,
             const Eigen::Matrix<S, 3, 1>& min,
-            const Eigen::Matrix<S, 3, 1>& max)
+            const Eigen::Matrix<S, 3, 1>& max,
+            const std::string& algorithm,
+            double timeLimit,
+            double discretization)
         {
-            writeQueue_.push_back(packet::ProblemSE3<S>(env, robot, start, goal, min, max));
+            std::uint32_t alg;
+                
+            if ("rrt" == algorithm)
+                alg = packet::ALGORITHM_RRT;
+            else if ("cforest" == algorithm)
+                alg = packet::ALGORITHM_CFOREST;
+            else
+                throw std::invalid_argument("unknown algorithm: " + algorithm);
+
+            std::uint32_t timeLimitMillis = static_cast<std::uint32_t>(timeLimit * 1e3);
+            
+            writeQueue_.push_back(packet::ProblemSE3<S>(env, robot, start, goal, min, max, alg, timeLimitMillis, discretization));
         }
         
         void loop() {
@@ -131,44 +145,11 @@ int main(int argc, char *argv[]) try {
     using S = double;
     using Scenario = mpl::demo::SE3RigidBodyScenario<S>;
     mpl::demo::SE3AppOptions<Scenario> options(argc, argv);
-    // static struct option longopts[] = {
-    //     { "coordinator", required_argument, NULL, 'c' },
-        
-    //     { NULL, 0, NULL, 0 }
-    // };
-
-    // std::string coordinator;
-
-    // for (int ch ; (ch = getopt_long(argc, argv, "c:", longopts, NULL)) != -1 ; ) {
-    //     switch (ch) {
-    //     case 'c':
-    //         coordinator = optarg;
-    //         break;
-    //     default:
-    //         usage(argv[0]);
-    //         return EXIT_FAILURE;
-    //     }
-    // }
-
-    // if (coordinator.empty())
-    //     throw std::invalid_argument("--coordinator is required");
 
     if (options.coordinator().empty())
         throw std::invalid_argument("--coordinator is required");
     
     mpl::RobotClient robot;
-
-    // std::tuple<Eigen::Quaternion<S>, Eigen::Matrix<S, 3, 1>> start, goal;
-    // Eigen::Matrix<S, 3, 1> min;
-    // Eigen::Matrix<S, 3, 1> max;
-
-    // std::get<Eigen::Quaternion<S>>(start).setIdentity();
-    // std::get<Eigen::Matrix<S, 3, 1>>(start) << 100, 200, 300;
-    // std::get<Eigen::Quaternion<S>>(goal).setIdentity();
-    // std::get<Eigen::Matrix<S, 3, 1>>(goal) << 500, 600, 700;
-
-    // min << -1, -3, -7;
-    // max << 1e3, 2e3, 3e3;
     
     robot.connect(options.coordinator());
     robot.sendProblemSE3(
@@ -177,7 +158,10 @@ int main(int argc, char *argv[]) try {
         options.start(),
         options.goal(),
         options.min(),
-        options.max());
+        options.max(),
+        options.algorithm(),
+        options.timeLimit(),
+        options.discretization());
     robot.loop();
 
     return EXIT_SUCCESS;
