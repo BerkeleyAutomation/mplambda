@@ -84,7 +84,14 @@ namespace mpl {
 
         template <class T>
         void process(T&&) {
-            JI_LOG(WARN) << "unexpected packet type";
+            JI_LOG(WARN) << "unexpected packet type: " << T::name();
+        }
+
+        template <class S>
+        void process(packet::PathSE3<S>&& pkt) {
+            JI_LOG(INFO) << "Recieved path cost = " << pkt.cost();
+            for (auto& q : pkt.path())
+                JI_LOG(INFO) << "  " << q;
         }
 
     public:

@@ -79,6 +79,9 @@ namespace mpl {
         Group* createGroup(Connection* initiator);
         Group* addToGroup(ID id, Connection* conn);
         void done(Group* group, Connection* conn);
+        
+        template <class T>
+        void broadcast(T&& packet, Group* group, Connection* conn);
     };
 
     class Coordinator::GroupData {
@@ -171,6 +174,12 @@ namespace mpl {
             JI_LOG(INFO) << "got PathSE3 " << sizeof(S);
             for (auto& q : pkt.path())
                 JI_LOG(TRACE) << "  " << q;
+
+            if (group_ == nullptr) {
+                JI_LOG(WARN) << "got PATH without active group";
+            } else {
+                coordinator_.broadcast(std::move(pkt), group_, this);
+            }
         }
         
     public:
@@ -309,7 +318,7 @@ std::pair<int, int> mpl::launchLambda(std::uint64_t pId, packet::ProblemSE3<S>& 
         args << ' ' << argv[i];
     JI_LOG(TRACE) << "Running lambda:" << args.str();
     
-    int fd = ::open(file, O_RDWR | O_CREAT, S_IRUSR | S_IWUSR);
+    int fd = ::open(file, O_RDWR | O_CREAT | O_TRUNC, S_IRUSR | S_IWUSR);
     dup2(fd, 1); // make stdout write to file
     dup2(fd, 2); // make stderr write to file
     close(fd); // close fd, dups remain open
@@ -353,6 +362,14 @@ void mpl::Coordinator::done(Group* group, Connection* conn) {
         if (it != groups_.end())
             groups_.erase(it);
     }
+}
+
+template <class T>
+void mpl::Coordinator::broadcast(T&& packet, Group* group, Connection* conn) {
+    group->second.initiator()->write(packet);
+    for (auto* c : group->second.connections())
+        if (conn != c)
+            c->write(packet);
 }
 
 template <class S>
