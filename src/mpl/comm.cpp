@@ -93,6 +93,8 @@ void mpl::Comm::connect(const std::string& host, int port) {
 
 void mpl::Comm::process() {
     struct pollfd pfd;
+    ssize_t n;
+    std::size_t needed;
     
     switch (state_) {
     case DISCONNECTED:
@@ -122,7 +124,26 @@ void mpl::Comm::process() {
     case CONNECTED:
         if (!writeQueue_.empty())
             writeQueue_.writeTo(socket_);
+
+        if ((n = ::recv(socket_, rBuf_.begin(), rBuf_.remaining(), 0)) < 0) {
+            if (errno == EAGAIN || errno == EINTR)
+                return;
+            throw std::system_error(errno, std::system_category(), "recv");
+        }
         
+        if (n == 0) {
+            JI_LOG(TRACE) << "connection closed";
+            close();
+            state_ = DISCONNECTED;
+            break;
+        }
+
+        rBuf_ += n;
+        rBuf_.flip();
+        while ((needed = packet::parse(rBuf_, [&] (auto&& pkt) {
+                        process(std::forward<decltype(pkt)>(pkt));
+                    })) == 0);
+        rBuf_.compact(needed);
         break;
     default:
         JI_LOG(FATAL) << "in bad state: " << state_;
@@ -130,7 +151,12 @@ void mpl::Comm::process() {
     }
 }
 
-void mpl::Comm::done() {
+void mpl::Comm::process(packet::Done&&) {
+    JI_LOG(INFO) << "received DONE";
+    done_ = true;
+}
+
+void mpl::Comm::sendDone() {
     int nonBlocking = 0;
     if (::ioctl(socket_, FIONBIO, reinterpret_cast<char*>(&nonBlocking)) == -1)
         JI_LOG(INFO) << "set blocking failed (" << errno << ")";

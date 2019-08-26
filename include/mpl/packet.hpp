@@ -40,8 +40,14 @@ namespace mpl::packet {
         using State = std::tuple<Eigen::Quaternion<S>, Eigen::Matrix<S,3,1>>;
         using Bound = Eigen::Matrix<S, 3, 1>;
 
+    public:
         static constexpr Type TYPE = PROBLEM_SE3 + sizeof(S)/8;
-
+        static std::string name() {
+            return (std::is_same_v<S, float>)
+                ? "ProblemSE3<float>"
+                : "ProblemSE3<double>";
+        }
+        
         State start_;
         State goal_;
         Bound min_;
@@ -161,6 +167,10 @@ namespace mpl::packet {
         std::uint64_t id_;
         
     public:
+        static std::string name() {
+            return "Hello";
+        }
+        
         explicit Hello(std::uint64_t id)
             : id_(id)
         {
@@ -190,6 +200,10 @@ namespace mpl::packet {
         std::uint64_t id_;
         
     public:
+        static std::string name() {
+            return "Done";
+        }
+        
         explicit Done(std::uint64_t id)
             : id_(id)
         {
@@ -220,19 +234,29 @@ namespace mpl::packet {
         using State = std::tuple<Eigen::Quaternion<S>, Eigen::Matrix<S, 3, 1>>;
         static constexpr std::size_t stateSize_ = buffer_size_v<State>;
         static constexpr Type TYPE = PATH_SE3 + sizeof(S)/8;
-            
+
+        S cost_;
         std::vector<State> path_;
 
     public:
-        explicit PathSE3(std::vector<State>&& path)
-            : path_(std::move(path))
+        static std::string name() {
+            return std::is_same_v<S, float>
+                ? "PathSE3<float>"
+                : "PathSE3<double>";
+        }
+        
+        explicit PathSE3(S cost, std::vector<State>&& path)
+            : cost_(cost)
+            , path_(std::move(path))
         {
         }
 
-        inline PathSE3(Type, BufferView buf) {
+        inline PathSE3(Type, BufferView buf)
+            : cost_(buf.get<S>())
+        {
             if (buf.remaining() % stateSize_ != 0)
                 throw protocol_error("invalid path packet size: " + std::to_string(buf.remaining()));
-
+            
             std::size_t n = buf.remaining() / stateSize_;
             path_.reserve(n);
             while (path_.size() < n)
@@ -241,14 +265,20 @@ namespace mpl::packet {
 
         inline operator Buffer () const {
             Size size = buffer_size_v<Type> + buffer_size_v<Size>
+                + buffer_size_v<S>
                 + stateSize_ * path_.size();
             Buffer buf{size};
             buf.put(TYPE);
             buf.put(size);
+            buf.put(cost_);
             for (const State& q : path_)
                 buf.put(q);
             buf.flip();
             return buf;
+        }
+
+        S cost() const {
+            return cost_;
         }
 
         const std::vector<State>& path() const & {

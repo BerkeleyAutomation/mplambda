@@ -139,6 +139,10 @@ namespace mpl {
             setGoalBias(0.01);
         }
 
+        const Space& space() const {
+            return scenario_.space();
+        }
+        
         void setGoalBias(Distance d) {
             threads_[0].setGoalBias(d * threads_.size());
         }

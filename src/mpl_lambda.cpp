@@ -100,7 +100,7 @@ namespace mpl::demo {
                 if (maxElapsedSolveTime.count() > 0 && Clock::now() - start > maxElapsedSolveTime)
                     return true;
                 comm_.process();
-                return planner.isSolved();
+                return comm_.isDone() || planner.isSolved();
             });
             
 
@@ -111,10 +111,14 @@ namespace mpl::demo {
             if (planner.isSolved()) {
                 std::vector<State> path;
                 planner.solution([&] (const State& q) { path.push_back(q); });
-                comm_.sendPath(std::move(path));
+                std::reverse(path.begin(), path.end());
+                Distance cost = 0;
+                for (std::size_t i=1 ; i<path.size() ; ++i)
+                    cost += planner.space().distance(path[i-1], path[i]);
+                comm_.sendPath(cost, std::move(path));
             }
             
-            comm_.done();
+            comm_.sendDone();
         }
 
         void run() {
