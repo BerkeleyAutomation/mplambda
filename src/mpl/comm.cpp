@@ -91,67 +91,38 @@ void mpl::Comm::connect(const std::string& host, int port) {
     tryConnect();
 }
 
-void mpl::Comm::process() {
+bool mpl::Comm::finishConnect() {
     struct pollfd pfd;
-    ssize_t n;
-    std::size_t needed;
-    
-    switch (state_) {
-    case DISCONNECTED:
-        return;
-    case CONNECTING:
-        pfd.fd = socket_;
-        pfd.events = POLLOUT;
-        if (::poll(&pfd, 1, 0) == -1) {
-            JI_LOG(WARN) << "poll failed while waiting for connection (" << errno << ")";
-            return;
-        }
 
-        if (pfd.revents & (POLLHUP | POLLERR)) {
-            JI_LOG(WARN) << "connection failed, trying next address";
-            connectAddr_ = connectAddr_->ai_next;
-            tryConnect();
-            return;
-        }
-        
-        if ((pfd.revents & POLLOUT) == 0) {
-            JI_LOG(WARN) << "unhandled events: " << pfd.revents;
-            return;
-        }
-        
-        connected();
-        // after connecting, fall through to the connected case.
-    case CONNECTED:
-        if (!writeQueue_.empty())
-            writeQueue_.writeTo(socket_);
-
-        if ((n = ::recv(socket_, rBuf_.begin(), rBuf_.remaining(), 0)) < 0) {
-            if (errno == EAGAIN || errno == EINTR)
-                return;
-            throw std::system_error(errno, std::system_category(), "recv");
-        }
-        
-        if (n == 0) {
-            JI_LOG(TRACE) << "connection closed";
-            close();
-            state_ = DISCONNECTED;
-            break;
-        }
-
-        rBuf_ += n;
-        rBuf_.flip();
-        while ((needed = packet::parse(rBuf_, [&] (auto&& pkt) {
-                        process(std::forward<decltype(pkt)>(pkt));
-                    })) == 0);
-        rBuf_.compact(needed);
-        break;
-    default:
-        JI_LOG(FATAL) << "in bad state: " << state_;
-        abort();
+    pfd.fd = socket_;
+    pfd.events = POLLOUT;
+    if (::poll(&pfd, 1, 0) == -1) {
+        JI_LOG(WARN) << "poll failed while waiting for connection (" << errno << ")";
+        return false;
     }
+
+    if (pfd.revents & (POLLHUP | POLLERR)) {
+        JI_LOG(WARN) << "connection failed, trying next address";
+        connectAddr_ = connectAddr_->ai_next;
+        tryConnect();
+        return false;
+    }
+    
+    if ((pfd.revents & POLLOUT) == 0) {
+        JI_LOG(WARN) << "unhandled events: " << pfd.revents;
+        return false;
+    }
+        
+    connected();
+    return true;
 }
 
-void mpl::Comm::process(packet::Done&&) {
+void mpl::Comm::process() {
+    processImpl([&] (auto&& pkt) { handle(std::forward<decltype(pkt)>(pkt)); });
+}
+
+
+void mpl::Comm::handle(packet::Done&&) {
     JI_LOG(INFO) << "received DONE";
     done_ = true;
 }

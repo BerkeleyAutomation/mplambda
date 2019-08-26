@@ -15,14 +15,20 @@
 #include <nigh/auto_strategy.hpp>
 
 namespace mpl {
-    class PCForest {};
+    struct PCForest {
+        static constexpr bool asymptotically_optimal = true;
+    };
     
     template <class Scenario>
     class Planner<Scenario, PCForest> {
+    public:
         using Space = typename Scenario::Space;
         using State = typename Scenario::State;
         using Distance = typename Scenario::Distance;
 
+        class Solution;
+        
+    private:
         static_assert(std::is_floating_point_v<Distance>, "distance must be a floating point type");
         
         using RNG = std::mt19937_64;
@@ -156,16 +162,17 @@ namespace mpl {
             threads_[0].addStart(*this, q);
         }
 
+        template <class T, class U>
+        void addPath(T cost, std::vector<U>&& path) {
+            JI_LOG(WARN) << "ADDPATH CALLED (not implemented) cost=" << cost << ", waypoints=" << path.size();
+        }
+
         std::size_t size() const {
             return nn_.size();
         }
 
-        template <class Fn>
-        void solution(Fn fn) const {
-            for (const Edge* edge = solution_.load(std::memory_order_acquire) ;
-                 edge != nullptr ;
-                 edge = edge->parent())
-                fn(edge->node()->state());
+        Solution solution() const {
+            return solution_.load(std::memory_order_acquire);
         }
 
         template <class DoneFn>
@@ -295,6 +302,56 @@ namespace mpl {
 
         bool casFirstChild(Edge*& expect, Edge* value, std::memory_order success, std::memory_order failure) {
             return firstChild_.compare_exchange_weak(expect, value, success, failure);
+        }
+    };
+
+    template <class Scenario>
+    class Planner<Scenario, PCForest>::Solution {
+        const Edge *edge_;
+
+        friend class Planner;
+        
+        Solution(const Edge *edge) : edge_(edge) {}
+
+    public:
+        Solution() : edge_{nullptr} {}
+        
+        operator bool () const {
+            return edge_ != nullptr;
+        }
+
+        Distance cost() const {
+            return edge_ ? edge_->pathCost() : std::numeric_limits<Distance>::infinity();
+        }
+
+        template <class Fn>
+        void visit(Fn fn) const {
+            for (const Edge *e = edge_ ; e != nullptr ; e = e->parent())
+                fn(e->node()->state());
+        }
+
+        bool operator == (const Solution& other) const {
+            return edge_ == other.edge_;
+        }
+
+        bool operator != (const Solution& other) const {
+            return edge_ != other.edge_;
+        }
+
+        bool operator < (const Solution& other) const {
+            return cost() < other.cost();
+        }
+
+        bool operator > (const Solution& other) const {
+            return other < *this;
+        }
+
+        bool operator <= (const Solution& other) const {
+            return !(other < *this);
+        }
+
+        bool operator >= (const Solution& other) const {
+            return !(*this < other);
         }
     };
 

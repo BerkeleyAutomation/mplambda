@@ -231,20 +231,23 @@ namespace mpl::packet {
 
     template <class S>
     class PathSE3 {
+    public:
         using State = std::tuple<Eigen::Quaternion<S>, Eigen::Matrix<S, 3, 1>>;
-        static constexpr std::size_t stateSize_ = buffer_size_v<State>;
         static constexpr Type TYPE = PATH_SE3 + sizeof(S)/8;
 
-        S cost_;
-        std::vector<State> path_;
-
-    public:
         static std::string name() {
             return std::is_same_v<S, float>
                 ? "PathSE3<float>"
                 : "PathSE3<double>";
         }
+       
+    private:
+        static constexpr std::size_t stateSize_ = buffer_size_v<State>;
+
+        S cost_;
+        std::vector<State> path_;
         
+    public:
         explicit PathSE3(S cost, std::vector<State>&& path)
             : cost_(cost)
             , path_(std::move(path))

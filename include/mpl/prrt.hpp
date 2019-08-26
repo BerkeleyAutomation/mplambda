@@ -13,14 +13,20 @@
 #include "planner.hpp"
 
 namespace mpl {
-    class PRRT {};
+    struct PRRT {
+        static constexpr bool asymptotically_optimal = false;
+    };
     
     template <class Scenario>
     class Planner<Scenario, PRRT> {
+    public:
         using Space = typename Scenario::Space;
         using State = typename Scenario::State;
         using Distance = typename Scenario::Distance;
         
+        class Solution;
+
+    private:
         using RNG = std::mt19937_64;
         
         class Node;
@@ -104,12 +110,8 @@ namespace mpl {
             return nn_.size();
         }
 
-        template <class Fn>
-        void solution(Fn fn) const {
-            for (const Node* node = solution_.load(std::memory_order_acquire) ;
-                 node != nullptr ;
-                 node = node->parent())
-                fn(node->state());
+        Solution solution() const {
+            return { this, solution_.load(std::memory_order_acquire) };
         }
 
         template <class DoneFn>
@@ -151,6 +153,54 @@ namespace mpl {
         
         const State& state() const {
             return state_;
+        }
+    };
+
+    template <class Scenario>
+    class Planner<Scenario, PRRT>::Solution {
+        // TODO: need to somehow enforce that solutions should not
+        // outlive the planner, otherwise both parent_ and node_ will
+        // be invalid.  (CForest has the same issue)
+        const Planner *planner_;
+        const Node *node_;
+
+        friend class Planner;
+        
+        Solution(const Planner* planner, const Node* node)
+            : planner_(planner)
+            , node_(node)
+        {
+        }
+        
+    public:
+        operator bool () const {
+            return node_ != nullptr;
+        }
+
+        Distance cost() const {
+            if (node_ == nullptr)
+                return std::numeric_limits<Distance>::infinity();
+            
+            Distance cost = 0;
+            const Node *p = node_;
+            for (const Node *p = node_, *n ; (n = p->parent()) != nullptr ; p = n)
+                cost += planner_->space().distance(p->state(), n->state());
+            
+            return cost;
+        }
+
+        template <class Fn>
+        void visit(Fn fn) const {
+            for (const Node* n = node_ ; n ; n = n->parent())
+                fn(n->state());
+        }
+
+        bool operator == (const Solution& other) const {
+            return node_ == other.node_;
+        }
+
+        bool operator != (const Solution& other) const {
+            return node_ != other.node_;
         }
     };
 

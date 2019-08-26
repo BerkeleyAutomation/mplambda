@@ -34,12 +34,17 @@ namespace mpl {
         void tryConnect();
 
         template <class T>
-        void process(T&&) {
+        void handle(T&&) {
             JI_LOG(WARN) << "unexpected packet type received: " << T::name();
         }
 
-        void process(packet::Done&&);
+        void handle(packet::Done&&);
         
+        bool finishConnect();
+
+        template <class PacketFn>
+        void processImpl(PacketFn);
+
     public:
         ~Comm();
 
@@ -53,6 +58,8 @@ namespace mpl {
         
         void connect(const std::string& host, int port = DEFAULT_PORT);
         void process();
+        template <class PathFn>
+        void process(PathFn);
 
         template <class S>
         void sendPath(S cost, std::vector<std::tuple<Eigen::Quaternion<S>, Eigen::Matrix<S, 3, 1>>>&& path);
@@ -73,5 +80,57 @@ void mpl::Comm::sendPath(
     writeQueue_.push_back(packet::PathSE3<S>(cost, std::move(path)));
 }
 
+template <class PacketFn>
+void mpl::Comm::processImpl(PacketFn fn) {
+    ssize_t n;
+    std::size_t needed;
+    
+    switch (state_) {
+    case DISCONNECTED:
+        return;
+    case CONNECTING:
+        if (!finishConnect())
+            return;
+        // after connecting, fall through to the connected case.
+    case CONNECTED:
+        if (!writeQueue_.empty())
+            writeQueue_.writeTo(socket_);
+
+        if ((n = ::recv(socket_, rBuf_.begin(), rBuf_.remaining(), 0)) < 0) {
+            if (errno == EAGAIN || errno == EINTR)
+                return;
+            throw std::system_error(errno, std::system_category(), "recv");
+        }
+        
+        if (n == 0) {
+            JI_LOG(TRACE) << "connection closed";
+            close();
+            state_ = DISCONNECTED;
+            break;
+        }
+
+        rBuf_ += n;
+        rBuf_.flip();
+        while ((needed = packet::parse(rBuf_, fn)) == 0);
+        rBuf_.compact(needed);
+        break;
+    default:
+        JI_LOG(FATAL) << "in bad state: " << state_;
+        abort();
+    }
+}
+
+template <class PathFn>
+void mpl::Comm::process(PathFn fn) {
+    processImpl([&] (auto&& pkt) {
+        using T = std::decay_t<decltype(pkt)>;
+        if constexpr (std::is_same_v<T, packet::PathSE3<float>> ||
+                      std::is_same_v<T, packet::PathSE3<double>>) {
+            fn(pkt.cost(), std::move(pkt).path());
+        } else {
+            handle(std::forward<decltype(pkt)>(pkt));
+        }
+    });
+}
 
 #endif

@@ -71,6 +71,15 @@ namespace mpl::demo {
                 comm_.connect(coordinator.substr(0, i), std::stoi(coordinator.substr(i+1)));
         }
 
+        template <class T>
+        void sendPath(T& solution) {
+            std::vector<State> path;
+            solution.visit([&] (const State& q) { path.push_back(q); });
+            std::reverse(path.begin(), path.end());
+            Distance cost = solution.cost();
+            comm_.sendPath(cost, std::move(path));
+        }
+
         template <class Algorithm>
         void runImpl() {
             JI_LOG(INFO) << "start: " << options_.start();
@@ -96,26 +105,50 @@ namespace mpl::demo {
             Clock::duration maxElapsedSolveTime = std::chrono::duration_cast<Clock::duration>(
                 std::chrono::duration<double>(options_.timeLimit()));
             auto start = Clock::now();
-            planner.solve([&] {
-                if (maxElapsedSolveTime.count() > 0 && Clock::now() - start > maxElapsedSolveTime)
-                    return true;
-                comm_.process();
-                return comm_.isDone() || planner.isSolved();
-            });
+
+            auto solution = planner.solution();
+
+            if constexpr (Algorithm::asymptotically_optimal) {
+                // asymptotically-optimal planner, run for the
+                // time-limit, and update the graph with best paths
+                // from the network.
+                planner.solve([&] {
+                    if (maxElapsedSolveTime.count() > 0 && Clock::now() - start > maxElapsedSolveTime)
+                        return true;
+                    comm_.process(
+                        [&] (auto cost, auto&& path) {
+                            planner.addPath(cost, std::forward<decltype(path)>(path));
+                        });
+
+                    auto s = planner.solution();
+                    if (s < solution) {
+                        sendPath(s);
+                        solution = s;
+                    }
+                    
+                    return comm_.isDone();
+                });
+            } else {
+                // non-asymptotically-optimal.  Stop as soon as we
+                // have a solution (either locally or from the
+                // network)
+                planner.solve([&] {
+                    if (maxElapsedSolveTime.count() > 0 && Clock::now() - start > maxElapsedSolveTime)
+                        return true;
+                    comm_.process();
+                    return comm_.isDone() || planner.isSolved();
+                });
+            }
             
 
             JI_LOG(INFO) << "solution " << (planner.isSolved() ? "" : "not ") << "found after " << (Clock::now() - start);
             JI_LOG(INFO) << "graph size = " << planner.size();
-            planner.solution([] (const State& q) { JI_LOG(INFO) << "  " << q; });
 
-            if (planner.isSolved()) {
-                std::vector<State> path;
-                planner.solution([&] (const State& q) { path.push_back(q); });
-                std::reverse(path.begin(), path.end());
-                Distance cost = 0;
-                for (std::size_t i=1 ; i<path.size() ; ++i)
-                    cost += planner.space().distance(path[i-1], path[i]);
-                comm_.sendPath(cost, std::move(path));
+            
+            auto finalSolution = planner.solution();
+            if (finalSolution != solution) {
+                finalSolution.visit([] (const State& q) { JI_LOG(INFO) << "  " << q; });
+                sendPath(finalSolution);
             }
             
             comm_.sendDone();
