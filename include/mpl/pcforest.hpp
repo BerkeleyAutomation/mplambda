@@ -51,7 +51,7 @@ namespace mpl {
 
         Distance maxDistance_{std::numeric_limits<Distance>::infinity()};
         
-        std::optional<State> qStart_;
+        Node* start_;
         std::atomic<Edge*> solution_{nullptr};
         std::vector<Thread> threads_;
 
@@ -70,7 +70,7 @@ namespace mpl {
             State q;
             do {
                 q = scenario_.randomSample(rng);
-            } while (s->pathCost() < distance(*qStart_, q) + distance(q, s->node()->state()));
+            } while (s->pathCost() < distance(start_->state(), q) + distance(q, s->node()->state()));
             
             return q;
         }
@@ -158,13 +158,30 @@ namespace mpl {
         }
 
         void addStart(const State& q) {
-            qStart_ = q;
-            threads_[0].addStart(*this, q);
+            if (start_ != nullptr)
+                throw std::invalid_argument("CForest only allows 1 start state");
+            
+            start_ = threads_[0].addStart(*this, q);
         }
 
-        template <class T, class U>
-        void addPath(T cost, std::vector<U>&& path) {
-            JI_LOG(WARN) << "ADDPATH CALLED (not implemented) cost=" << cost << ", waypoints=" << path.size();
+        void addPath(Distance cost, std::vector<State>&& path) {
+            JI_LOG(WARN) << "ADDPATH CALLED with cost=" << cost << ", waypoints=" << path.size();
+
+            if (path.size() < 2) {
+                JI_LOG(WARN) << "addPath called with path that is too short";
+                return;
+            }
+
+            if (start_ == nullptr)
+                throw std::invalid_argument("start state must be set before calling addPath");
+
+            Distance dStartZero = distance(start_->state(), start_->state());
+                
+            if (distance(start_->state(), path.front()) > dStartZero)
+                throw std::invalid_argument("addPath's start state does not match");
+
+            auto first = path.begin();
+            threads_[0].addPath(*this, start_, ++first, path.end());
         }
 
         std::size_t size() const {
@@ -177,7 +194,7 @@ namespace mpl {
 
         template <class DoneFn>
         void solve(DoneFn doneFn) {
-            if (!qStart_)
+            if (!start_)
                 throw std::logic_error("start state must be set before calling solve()");
             
             int nThreads = threads_.size();
@@ -391,7 +408,7 @@ namespace mpl {
             goalBias_ = d;
         }
 
-        void addStart(Planner& planner, const State& q) {
+        Node* addStart(Planner& planner, const State& q) {
             if (!planner.isValid(q))
                 throw std::invalid_argument("start state is not valid");
             
@@ -400,9 +417,10 @@ namespace mpl {
             Edge *newEdge = &edges_.emplace_back(newNode);
             setEdge(planner, newNode, newEdge);
             planner.addNode(newNode);
+            return newNode;
         }
 
-        void addSample(Planner& planner, State qRand) {
+        Node* addSample(Planner& planner, State qRand) {
             auto [nNear, dNear] = planner.nearest(qRand).value();
 
             if (dNear > planner.maxDistance_) {
@@ -411,17 +429,22 @@ namespace mpl {
             }
 
             if (dNear == 0 || dNear == planner.distance(qRand, qRand))
-                return;
+                return nullptr;
 
             if (!planner.isValid(nNear->state(), qRand))
-                return;
+                return nullptr;
 
-            bool isGoal = planner.isGoal(qRand);
+            Node *newNode = &nodes_.emplace_back(planner.isGoal(qRand), qRand);
+            addNodeNear(planner, newNode, nNear, dNear);
+            return newNode;
+        }
+
+        void addNodeNear(Planner& planner, Node *newNode, Node *nNear, Distance dNear) {
             Edge *parent = nNear->edge(std::memory_order_relaxed);
             Distance parentCost = parent->pathCost() + dNear;
 
             // get the neighborhood for rewiring
-            planner.nearest(nbh_, qRand);
+            planner.nearest(nbh_, newNode->state());
 
             // check if any in the neighborhood would make a better
             // parent than the current one.  We check in increasing
@@ -440,7 +463,7 @@ namespace mpl {
             while (!parentHeap_.empty()) {
                 auto [ nbrPathCost, nbrEdge, nbrIndex ] = parentHeap_.front();
                 std::get<Node*>(nbh_[nbrIndex]) = nullptr; // mark neighbor as already checked
-                if (planner.isValid(nbrEdge->node()->state(), qRand)) {
+                if (planner.isValid(nbrEdge->node()->state(), newNode->state())) {
                     parent = nbrEdge;
                     dNear = std::get<Distance>(nbh_[nbrIndex]);
                     parentCost = nbrPathCost;
@@ -450,15 +473,13 @@ namespace mpl {
                 parentHeap_.pop_back();
             }
 
-            // now that we have the parent, create the node, and add
-            // it to the tree.  After this, other threads may access
-            // the node.
-            Node *newNode = &nodes_.emplace_back(isGoal, qRand);
+            // Now that we have the parent, we can add the node to the
+            // tree.  After this, other threads may access the node.
             Edge *newEdge = &edges_.emplace_back(newNode, parent, dNear, parentCost);
             setEdge(planner, newNode, newEdge);
             planner.addNode(newNode);
 
-            if (isGoal)
+            if (newNode->isGoal())
                 planner.updateSolution(newEdge, true);
 
             // last stage of rewiring, check to see if any neighboring
@@ -514,6 +535,50 @@ namespace mpl {
                 oldEdge = newEdge;
                 newEdge = node->edge(std::memory_order_acquire);
             } while (oldEdge != newEdge);
+        }
+
+        template <class Iter>
+        void addPath(Planner& planner, Node* prev, Iter first, Iter last) {
+            // path.front() should be the start state
+            // path.back() should be a/the goal state
+
+            // we know that each path segment is valid, thus we do not
+            // need to check.  We also know that each path segment is
+            // the likely candidate for a parent, and can thus skip
+            // the first nearest neighbor search.
+
+            for (Iter it = first ; it != last ; ++it) {
+                Distance dPrev = planner.distance(prev->state(), *it);
+                auto [nNear, dNear] = planner.nearest(*it).value();
+                
+                // check if the nearest node is distance of 0 away
+                // (using distance to self to compute 0 to account for
+                // floating point inaccuracies)
+                if (dNear > planner.distance(*it, *it)) {
+                    // the state is not already in the graph, we have
+                    // to add it.
+                    Node *newNode = &nodes_.emplace_back(planner.isGoal(*it), *it);
+                    addNodeNear(planner, newNode, prev, dPrev);
+                    prev = newNode;
+                } else {
+                    // the path state is already in the graph, however
+                    // it may not have the best path to it.  We check
+                    // only the prev node, which we know is a valid
+                    // parent, and see if an edge through it would
+                    // make a better path for the existing node.  Only
+                    // then do we replace the edge.  We do not (though
+                    // we could consider) do any neighborhood
+                    // rewiring.
+
+                    Edge* prevEdge = prev->edge(std::memory_order_acquire);
+                    Distance newCost = prevEdge->pathCost() + dPrev;
+                    if (newCost < nNear->edge(std::memory_order_acquire)->pathCost()) {
+                        Edge *newEdge = &edges_.emplace_back(nNear, prevEdge, dPrev, newCost);
+                        setEdge(planner, nNear, newEdge);
+                    }
+                    prev = nNear;
+                }
+            }
         }
 
         template <class DoneFn>

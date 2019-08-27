@@ -9,36 +9,34 @@
 
 namespace mpl::demo {
 
+    template <class T, class U>
+    struct ConvertPath;
 
-    template <class T>
-    T decode(const char* buf) {
-        T value;
-        if (__BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__) {
-            std::reverse_copy(buf, buf + sizeof(T), reinterpret_cast<char *>(&value));
-        } else if (__BYTE_ORDER__ == __ORDER_BIG_ENDIAN__) {
-            std::copy(buf, buf + sizeof(T), reinterpret_cast<char *>(&value));
-        } else{
-            abort();
+    template <class R, class S>
+    struct ConvertPath<
+        std::tuple<Eigen::Quaternion<R>, Eigen::Matrix<R, 3, 1>>,
+        std::tuple<Eigen::Quaternion<S>, Eigen::Matrix<S, 3, 1>>>
+    {
+        using Result = std::tuple<Eigen::Quaternion<R>, Eigen::Matrix<R, 3, 1>>;
+        using Source = std::tuple<Eigen::Quaternion<S>, Eigen::Matrix<S, 3, 1>>;
+        
+        static std::vector<Result> apply(std::vector<Source>&& arg) {
+            std::vector<Result> r;
+            r.reserve(arg.size());
+            for (auto& q : arg)
+                r.emplace_back(
+                    std::get<0>(q).template cast<R>(),
+                    std::get<1>(q).template cast<R>());
+            return r;
         }
-        return value;
-    }
-
-    template <class T>
-    void encode(char *buf, const T& value) {
-        if (__BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__) {
-            std::reverse_copy(
-                reinterpret_cast<char*>(&value),
-                reinterpret_cast<char*>(&value) + sizeof(value),
-                buf);
-        } else if (__BYTE_ORDER__ == __ORDER_BIG_ENDIAN__) {
-            std::copy(
-                reinterpret_cast<char*>(&value),
-                reinterpret_cast<char*>(&value) + sizeof(value),
-                buf);
-        } else {
-            abort();
-        }
-                              
+    };
+    
+    template <class T, class U>
+    std::vector<T> convertPath(std::vector<U>&& path) {
+        if constexpr (std::is_same_v<T, U>)
+            return path;
+        else
+            return ConvertPath<T, U>::apply(std::move(path));
     }
     
     template <class Scenario>
@@ -117,7 +115,18 @@ namespace mpl::demo {
                         return true;
                     comm_.process(
                         [&] (auto cost, auto&& path) {
-                            planner.addPath(cost, std::forward<decltype(path)>(path));
+                            planner.addPath(cost, convertPath<State>(std::forward<decltype(path)>(path)));
+
+                            // update our best solution if it has the
+                            // same cost as the solution we just got
+                            // from a peer.  If we have a different
+                            // solution, then we'll update and send
+                            // the solution after the comm_.process().
+                            // This avoids re-broadcasting the same
+                            // solution.
+                            auto newSol = planner.solution();
+                            if (newSol.cost() == cost)
+                                solution = newSol;
                         });
 
                     auto s = planner.solution();
