@@ -8,8 +8,62 @@ Motion Planning Lambdas
 * Eigen [http://eigen.tuxfamily.org/index.php?title=Main_Page]
 * FCL [https://github.com/flexible-collision-library/fcl] (build from source)
 * libccd [https://github.com/danfis/libccd] (build from source)
-* assimp [https://github.com/assimp/assimp] (usually available in package system)
+* assimp [https://github.com/assimp/assimp] (usually available in package systems)
+* libatomic (required by some compilers, usually available in package systems)
 * (Optional: ninja [https://ninja-build.org/] build tool, usually in package systems)
+
+## Installing Required Software from Package Systems
+
+For requires software that is available in package systems, use the system's package installer or equivalent to install.  Here are a few examples.  Some of these examples are untested, but should be close enough to get one started.  Please update this README with the correct information.
+
+### Ubuntu Linux
+```console
+% sudo apt install g++ clang++ libeigen libassimp libatomic ninja
+```
+
+### Macports
+```console
+% sudo port install g++-9 clang-8.0 eigen3 assimp libatomic_ops ninja
+```
+
+### Homebrew
+```console
+% brew install gcc eigen assimp libatomic ninja
+```
+
+### Amazon Linux
+```console
+% sudo yum install g++ clang++ assimp libatomic ninja
+```
+## Installing Required Software from Source
+
+Both `libccd` and `fcl` should usually be built from source, as the package versions are often out of date.  FCL requires libccd, so install libccd first.
+
+### libccd
+
+IMPORTANT!  In the instructions below change `g++` and `gcc` to match the compiler you will be using to build this project.  E.g., `CXX=g++-9 CC=gcc-9` or `CXX=clang++-7 CC=clang-7`. 
+
+```console
+% git clone https://github.com/danfis/libccd.git
+% cd libccd
+% mkdir build
+% cd build
+% CXX=g++ CC=gcc cmake -DCMAKE_BUILD_TYPE=Release ..
+% make -j4
+% sudo make install
+```
+### FCL
+
+IMPORTANT!  See note above on compiler setup.
+```console
+% git clone https://github.com/flexible-collision-library/fcl.git
+% cd fcl
+% mkdir build
+% cd build
+% CXX=g++ CC=gcc cmake -DCMAKE_BUILD_TYPE=Release ..
+% make -j4
+% sudo make install
+````
 
 # Setup instructions
 
