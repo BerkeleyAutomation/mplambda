@@ -106,3 +106,16 @@ $ PKG_CONFIG_PATH=/usr/local/lib/pkgconfig cmake -DCMAKE_BUILD_TYPE=Debug ../..
 ```
 
 To specify both `PKG_CONFIG_PATH` and `CXX`, separate them by a space.
+
+# Running
+
+First start the Coordinator process in its own terminal window:
+```console
+$ ./mpl_coordinator
+```
+It should display a few lines about it listening on a port.
+
+In a *separate* window, run the robot client command with a test problem from OMPL APP:
+```console
+$ ./mpl_robot --coordinator=localhost --start=0,0,0,1,270,160,-200 --goal=0,0,0,1,270,160,-400 --min=53.46,-21.25,-476.86 --max=402.96,269.25,-91.0 --algorithm=rrt --env Twistycool_env.dae --robot Twistycool_robot.dae 
+```
