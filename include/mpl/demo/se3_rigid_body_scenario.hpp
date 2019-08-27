@@ -2,6 +2,7 @@
 #ifndef MPL_DEMO_SE3_RIGID_BODY_PLANNING_HPP
 #define MPL_DEMO_SE3_RIGID_BODY_PLANNING_HPP
 
+#include<atomic>
 #include "../interpolate.hpp"
 #include "../randomize.hpp"
 // #include <bump/bvh_mesh.hpp>

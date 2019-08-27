@@ -24,7 +24,7 @@ endif()
 find_package(OpenMP REQUIRED)
 find_package(Assimp REQUIRED)
 find_package(Threads)
-find_package(Eigen3 3.3 REQUIRED NO_MODULE) 
+find_package(Eigen3 3.3 REQUIRED NO_MODULE)
 
 if (OPENMP_FOUND)
     set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${OpenMP_C_FLAGS}")
@@ -42,3 +42,5 @@ add_executable(mpl_coordinator src/mpl_coordinator.cpp src/mpl/write_queue.cpp)
 # target_link_libraries(mpl_coordinator Threads::Threads)
 
 add_executable(mpl_robot src/mpl_robot.cpp src/mpl/write_queue.cpp src/mpl/demo/app_options.cpp)
+
+target_link_libraries(mpl_robot Eigen3::Eigen Threads::Threads ${ASSIMP_LIBRARIES} ${FCL_LIBRARIES} ${CCD_LIBRARIES})

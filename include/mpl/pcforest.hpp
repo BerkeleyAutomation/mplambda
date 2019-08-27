@@ -5,6 +5,7 @@
 #include "interpolate.hpp"
 #include "planner.hpp"
 
+#include <atomic>
 #include <deque>
 #include <random>
 #include <thread>
@@ -223,6 +224,8 @@ namespace mpl {
         bool goal_;
 
     public:
+        Node(const Node&) { abort(); }
+        Node(Node&&) { abort(); }
         Node(bool goal, const State& q)
             : state_(q)
             , edge_{nullptr}
@@ -268,8 +271,8 @@ namespace mpl {
         }
 
     public:
-        Edge(const Edge&) = delete;
-        Edge(Edge&&) = delete;
+        Edge(const Edge&) { abort(); }
+        Edge(Edge&&) { abort(); }
 
         Edge(Node *node)
             : node_(node)

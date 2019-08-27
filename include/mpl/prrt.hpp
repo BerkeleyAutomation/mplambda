@@ -2,6 +2,7 @@
 #ifndef MPL_PRRT_HPP
 #define MPL_PRRT_HPP
 
+#include <atomic>
 #include <jilog.hpp>
 #include <random>
 #include <vector>
