@@ -35,10 +35,10 @@ endif()
 link_directories(${FCL_LIBRARY_DIRS} ${ASSIMP_LIBRARY_DIRS})
 include_directories(include ../jilog/include ../nigh/src ../sys/include ${FCL_INCLUDE_DIRS} ${ASSIMP_INCLUDE_DIRS})
 
-add_executable(mpl_lambda src/mpl_lambda.cpp src/mpl/comm.cpp src/mpl/write_queue.cpp)
+add_executable(mpl_lambda src/mpl_lambda.cpp src/mpl/comm.cpp src/mpl/write_queue.cpp src/mpl/demo/app_options.cpp)
 target_link_libraries(mpl_lambda Eigen3::Eigen Threads::Threads ${ASSIMP_LIBRARIES} ${FCL_LIBRARIES} ${CCD_LIBRARIES})
 
 add_executable(mpl_coordinator src/mpl_coordinator.cpp src/mpl/write_queue.cpp)
 # target_link_libraries(mpl_coordinator Threads::Threads)
 
-add_executable(mpl_robot src/mpl_robot.cpp src/mpl/write_queue.cpp)
+add_executable(mpl_robot src/mpl_robot.cpp src/mpl/write_queue.cpp src/mpl/demo/app_options.cpp)

@@ -1,4 +1,4 @@
-#include <mpl/demo/se3_app_options.hpp>
+#include <mpl/demo/app_options.hpp>
 #include <mpl/demo/se3_rigid_body_scenario.hpp>
 #include <mpl/prrt.hpp>
 #include <mpl/comm.hpp>
@@ -45,7 +45,7 @@ namespace mpl::demo {
         using Distance = typename Scenario::Distance;
         using Bound = Eigen::Matrix<Distance, 3, 1>;
 
-        demo::SE3AppOptions<Scenario> options_;
+        demo::AppOptions options_;
         Comm comm_;
 
     public:
@@ -80,9 +80,14 @@ namespace mpl::demo {
 
         template <class Algorithm>
         void runImpl() {
-            JI_LOG(INFO) << "start: " << options_.start();
-            JI_LOG(INFO) << "goal: " << options_.goal();
-            JI_LOG(INFO) << "bounds: " << options_.min() << " to " << options_.max();
+            State qStart = options_.start<State>();
+            State qGoal = options_.goal<State>();
+            Bound min = options_.min<Bound>();
+            Bound max = options_.max<Bound>();
+            
+            JI_LOG(INFO) << "start: " << qStart;
+            JI_LOG(INFO) << "goal: " << qGoal;
+            JI_LOG(INFO) << "bounds: " << min << " to " << max;
 
             double discretization = options_.discretization();
             if (discretization <= 0)
@@ -91,13 +96,9 @@ namespace mpl::demo {
             Planner<Scenario, Algorithm> planner(
                 options_.env(),
                 options_.robot(),
-                options_.goal(),
-                options_.min(),
-                options_.max(),
-                discretization);
-            // envMesh_, robotMesh_, *qGoal_, *qMin_, *qMax_, 0.1};
+                qGoal, min, max, discretization);
 
-            planner.addStart(options_.start());
+            planner.addStart(qStart);
 
             using Clock = std::chrono::steady_clock;
             Clock::duration maxElapsedSolveTime = std::chrono::duration_cast<Clock::duration>(

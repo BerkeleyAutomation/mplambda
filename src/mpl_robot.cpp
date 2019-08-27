@@ -2,7 +2,7 @@
 #include <mpl/buffer.hpp>
 #include <mpl/write_queue.hpp>
 #include <mpl/packet.hpp>
-#include <mpl/demo/se3_app_options.hpp>
+#include <mpl/demo/app_options.hpp>
 #include <mpl/demo/se3_rigid_body_scenario.hpp>
 #include <netdb.h>
 #include <getopt.h>
@@ -142,16 +142,12 @@ namespace mpl {
     };
 }
 
-static void usage(const char *argv0) {
-    std::clog << "Usage: " << argv0 << " [options]\n"
-        "Options:\n"
-        "  -c, --coordinator=HOST[:PORT]" << std::endl;
-}
-
 int main(int argc, char *argv[]) try {
     using S = double;
     using Scenario = mpl::demo::SE3RigidBodyScenario<S>;
-    mpl::demo::SE3AppOptions<Scenario> options(argc, argv);
+    using State = typename Scenario::State;
+    using Bound = typename Scenario::Bound;
+    mpl::demo::AppOptions options(argc, argv);
 
     if (options.coordinator().empty())
         throw std::invalid_argument("--coordinator is required");
@@ -162,10 +158,10 @@ int main(int argc, char *argv[]) try {
     robot.sendProblemSE3(
         options.env(),
         options.robot(),
-        options.start(),
-        options.goal(),
-        options.min(),
-        options.max(),
+        options.start<State>(),
+        options.goal<State>(),
+        options.min<Bound>(),
+        options.max<Bound>(),
         options.algorithm(),
         options.timeLimit(),
         options.discretization());
