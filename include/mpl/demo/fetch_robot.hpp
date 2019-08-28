@@ -4,9 +4,51 @@
 
 #include "twist.hpp"
 #include <Eigen/Dense>
+#include <fcl/narrowphase/collision.h>
 
 namespace mpl::demo {
 
+    template <class S>
+    class Origin {
+        using Scalar = S;
+        using Transform = Eigen::Transform<Scalar, 3, Eigen::AffineCompact>;
+        using Vec3 = Eigen::Matrix<Scalar, 3, 1>;
+        
+        Transform m_;
+
+    public:
+        Origin(Scalar tx, Scalar ty, Scalar tz, Scalar roll, Scalar pitch, Scalar yaw) {
+            using R = Eigen::AngleAxis<Scalar>;
+            
+            m_.linear() =
+                (R(yaw, Vec3::UnitZ()) * R(pitch, Vec3::UnitY()) * R(roll, Vec3::UnitX()))
+                .toRotationMatrix();
+            m_.translation() = Vec3{tx, ty, tz};
+        }
+
+        operator const Transform& () const {
+            return m_;
+        }
+    };
+
+    template <class S>
+    struct FetchCollisionGeometry {
+        using Scalar = S;
+        
+        fcl::Cylinder<S> base_{0.29, 0.32 - 0.02};
+        fcl::Box<S> torsoLift_{0.18 + 0.08, 0.34, 1.5};
+        fcl::Capsule<S> shoulderPan_{0.0525, 0.29};
+        fcl::Cylinder<S> shoulderLift_{0.06, 0.145};
+        fcl::Capsule<S> upperarmRoll_{0.0525, 0.24};
+        fcl::Cylinder<S> elbowFlex_{0.0525, 0.14};
+        fcl::Capsule<S> forearmRoll_{0.0525, 0.215};
+        fcl::Cylinder<S> wristFlex_{0.0525, 0.155};
+        fcl::Capsule<S> wristRoll_{0.0525, 0.09};
+        fcl::Box<S> gripper_{0.12 + 0.0625 * 2, 0.125, 0.075};
+        fcl::Capsule<S> neck_{0.085 * 1.1, 0.04 * 1.1};
+        fcl::Cylinder<S> head_{0.24 * 1.05, 0.115 * 1.05};
+    };
+    
     template <class S>
     class FetchRobot {
     public:
@@ -30,9 +72,16 @@ namespace mpl::demo {
         };
 
         static constexpr S PI = 3.14159265358979323846264338327950288419716939937510582097494459230781640628620L;
+
+        // keep the gripper from hitting the floor
+        static constexpr S floorClearance_ = 0.30;
         
         using Config = Eigen::Matrix<S, kDOF, 1>;
         using Jacobian = Eigen::Matrix<S, 6, kDOF>;
+
+        // Collision geometry does not change from one robot to the
+        // next, so we keep around a static copy of it.
+        static FetchCollisionGeometry<S> collisionGeometry_;
 
         static Config jointMin() {
             Config q;
@@ -125,6 +174,66 @@ namespace mpl::demo {
         Frame wristRollLink_;
         Frame gripperAxis_;
 
+        Frame tfBaseLink() const {
+            const static Origin<Scalar> originBaseLink{0, 0, 0.1975, 0, 0, 0};
+            return baseLink_ * originBaseLink;
+        }
+
+        Frame tfTorsoLiftLink() const {
+            const static Origin<Scalar> originTorsoLiftLink{-0.09, 0, 0.31, 0, 0, 0};
+            return torsoLiftLink_ * originTorsoLiftLink;
+        }
+
+        Frame tfShoulderPanLink() const {
+            const static Origin<Scalar> originShoulderPanLink{0, 0, -0.025, 0, 0, 0};
+            return shoulderPanLink_ * originShoulderPanLink;
+        }
+
+        Frame tfShoulderLiftLink() const {
+            const static Origin<Scalar> originShoulderLiftLink{0, -0.0025, 0, 1.5708, 0, 0};
+            return shoulderLiftLink_ * originShoulderLiftLink;
+        }
+
+        Frame tfUpperarmRollLink() const {
+            const static Origin<Scalar> originUpperarmRollLink{-0.04, 0, 0, 0, 1.5708, 0};
+            return upperarmRollLink_ * originUpperarmRollLink;
+        }
+
+        Frame tfElbowFlexLink() const {
+            const static Origin<Scalar> originElbowFlexLink{0, 0, 0, 1.5708, 0, 0};
+            return elbowFlexLink_ * originElbowFlexLink;
+        }
+        
+        Frame tfForearmRollLink() const {
+            const static Origin<Scalar> originForearmRollLink{-0.04, 0, 0, 0, 1.5708, 0};
+            return forearmRollLink_ * originForearmRollLink;
+        }
+
+        Frame tfWristFlexLink() const {
+            const static Origin<Scalar> originWristFlexLink{0, -0.01, 0, 1.5708, 0, 0};
+            return wristFlexLink_ * originWristFlexLink;
+        }
+
+        Frame tfWristRollLink() const {
+            const static Origin<Scalar> originWristRollLink{-0.045, 0, 0, 0, 1.5708, 0};
+            return wristRollLink_ * originWristRollLink;
+        }
+
+        Frame tfGripperLink() const {
+            const static Origin<Scalar> originGripperLink{-0.09, 0, 0.0025, 0, 0, 0};
+            return gripperAxis_ * originGripperLink;
+        }
+
+        Frame tfNeckLink() const {
+            const static Origin<Scalar> originNeckLink{0.053125, 0, 0.603001417713939, 0, 0, 0};
+            return torsoLiftLink_ * originNeckLink;
+        }
+
+        Frame tfHeadLink() const {
+            const static Origin<Scalar> originHeadLink{0.053125, 0, 0.603001417713939 + 0.115/2, 0, 0, 0};
+            return torsoLiftLink_ * originHeadLink;
+        }
+        
         void fk() {
             using T = Eigen::Translation<Scalar, 3>;
             using R = Eigen::AngleAxis<Scalar>;
@@ -241,10 +350,11 @@ namespace mpl::demo {
             
             return J;
         }
-        
+
         // Compute an IK solution using LMA based upon the current
-        // configuration.  This method modifies the current
-        // configuration of the robot regardless of success of
+        // configuration.  This method returns true if successful,
+        // false if not.  This method modifies the current
+        // configuration of the robot regardless of success or
         // failure.  If successful, the IK solution can be obtained
         // from the `config()` method, and the robot's joint frames
         // will be set to their FK solution.  If unsuccessful, the
@@ -328,6 +438,160 @@ namespace mpl::demo {
             }
 
             // failed: too many iterations
+            return false;
+        }
+
+        bool selfCollision() const {
+            fcl::CollisionRequest<S> req;
+            fcl::CollisionResult<S> res;
+
+            if (collide(
+                    &collisionGeometry_.base_, tfBaseLink(),
+                    &collisionGeometry_.forearmRollLink_, tfForearmRollLink(),
+                    req, res))
+                return true;
+
+            if (collide(
+                    &collisionGeometry_.base_, tfBaseLink(),
+                    &collisionGeometry_.wristFlexLink_, tfWristFlexLink(),
+                    req, res))
+                return true;
+
+            if (collide(
+                    &collisionGeometry_.base_, tfBaseLink(),
+                    &collisionGeometry_.wristRollLink_, tfWristRollLink(),
+                    req, res))
+                return true;
+
+            if (collide(
+                    &collisionGeometry_.base_, tfBaseLink(),
+                    &collisionGeometry_.gripper_, tfGripperLink(),
+                    req, res))
+                return true;
+
+            if (collide(
+                    &collisionGeometry_.torsoLift_, tfTorsoLiftLink(),
+                    &collisionGeometry_.forearmRoll_, tfForearmRollLink(),
+                    req, res))
+                return true;
+            
+            if (collide(
+                    &collisionGeometry_.torsoLift_, tfTorsoLiftLink(),
+                    &collisionGeometry_.wristFlex_, tfWristFlexLink(),
+                    req, res))
+                return true;
+            
+            if (collide(
+                    &collisionGeometry_.torsoLift_, tfTorsoLiftLink(),
+                    &collisionGeometry_.wristRoll_, tfWristRollLink(),
+                    req, res))
+                return true;
+            
+            if (collide(
+                    &collisionGeometry_.torsoLift_, tfTorsoLiftLink(),
+                    &collisionGeometry_.gripper_, tfGripperLink(),
+                    req, res))
+                return true;
+            
+            if (collide(
+                    &collisionGeometry_.shoulderPan_, tfShoulderPanLink(),
+                    &collisionGeometry_.forearmRoll_, tfForearmRollLink(),
+                    req, res))
+                return true;
+            
+            if (collide(
+                    &collisionGeometry_.shoulderPan_, tfShoulderPanLink(),
+                    &collisionGeometry_.wristFlex_, tfWristFlexLink(),
+                    req, res))
+                return true;
+            
+            if (collide(
+                    &collisionGeometry_.shoulderPan_, tfShoulderPanLink(),
+                    &collisionGeometry_.wristRoll_, tfWristRollLink(),
+                    req, res))
+                return true;
+            
+            if (collide(
+                    &collisionGeometry_.shoulderPan_, tfShoulderPanLink(),
+                    &collisionGeometry_.gripper_, tfGripperLink(),
+                    req, res))
+                return true;
+            
+            if (collide(
+                    &collisionGeometry_.shoulderLift_, tfShoulderLiftLink(),
+                    &collisionGeometry_.wristRoll_, tfWristRollLink(),
+                    req, res))
+                return true;
+            
+            if (collide(
+                    &collisionGeometry_.upperarmRoll_, tfUpperarmRollLink(),
+                    &collisionGeometry_.wristRoll_, tfWristRollLink(),
+                    req, res))
+                return true;
+            
+            if (collide(
+                    &collisionGeometry_.upperarmRoll_, tfUpperarmRollLink(),
+                    &collisionGeometry_.gripper_, tfGripperLink(),
+                    req, res))
+                return true;
+            
+            if (collide(
+                    &collisionGeometry_.upperarmRoll_, tfUpperarmRollLink(),
+                    &collisionGeometry_.head_, tfHeadLink(),
+                    req, res))
+                return true;
+            
+            if (collide(
+                    &collisionGeometry_.elbowFlex_, tfElbowFlexLink(),
+                    &collisionGeometry_.head_, tfHeadLink(),
+                    req, res))
+                return true;
+            
+            if (collide(
+                    &collisionGeometry_.forearmRoll_, tfForearmRollLink(),
+                    &collisionGeometry_.head_, tfHeadLink(),
+                    req, res))
+                return true;
+            
+            if (collide(
+                    &collisionGeometry_.wristFlex_, tfWristFlexLink(),
+                    &collisionGeometry_.neck_, tfNeckLink(),
+                    req, res))
+                return true;
+            
+            if (collide(
+                    &collisionGeometry_.wristFlex_, tfWristFlexLink(),
+                    &collisionGeometry_.head_, tfHeadLink(),
+                    req, res))
+                return true;
+            
+            if (collide(
+                    &collisionGeometry_.wristRoll_, tfWristRollLink(),
+                    &collisionGeometry_.neck_, tfNeckLink(),
+                    req, res))
+                return true;
+            
+            if (collide(
+                    &collisionGeometry_.wristRoll_, tfWristRollLink(),
+                    &collisionGeometry_.head_, tfHeadLink(),
+                    req, res))
+                return true;
+            
+            if (collide(
+                    &collisionGeometry_.gripper_, tfGripperLink(),
+                    &collisionGeometry_.neck_, tfNeckLink(),
+                    req, res))
+                return true;
+            
+            if (collide(
+                    &collisionGeometry_.gripper_, tfGripperLink(),
+                    &collisionGeometry_.head_, tfHeadLink(),
+                    req, res))
+                return true;
+
+            if (gripperAxis_.translation()[2] < floorClearance_)
+                return true;
+            
             return false;
         }
     };
