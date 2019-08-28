@@ -18,22 +18,22 @@ For requires software that is available in package systems, use the system's pac
 
 ### Ubuntu Linux
 ```console
-% sudo apt install g++ clang++ libeigen libassimp libatomic ninja
+% sudo apt install g++ clang++ libeigen libassimp ninja
 ```
 
 ### Macports
 ```console
-% sudo port install g++-9 clang-8.0 eigen3 assimp libatomic_ops ninja
+% sudo port install g++-9 clang-8.0 eigen3 assimp ninja
 ```
 
 ### Homebrew
 ```console
-% brew install gcc eigen assimp libatomic ninja
+% brew install gcc eigen assimp ninja
 ```
 
 ### Amazon Linux
 ```console
-% sudo yum install g++ clang++ assimp libatomic ninja
+% sudo yum install g++ clang++ assimp ninja
 ```
 ## Installing Required Software from Source
 
@@ -106,6 +106,12 @@ $ PKG_CONFIG_PATH=/usr/local/lib/pkgconfig cmake -DCMAKE_BUILD_TYPE=Debug ../..
 ```
 
 To specify both `PKG_CONFIG_PATH` and `CXX`, separate them by a space.
+
+**Homebrew** seems to require use of **gcc**. Specify this compiler when running cmake, as you did when installing libccd and fcl.
+
+```console
+$ CC=GCC-9 CXX=g++-9 cmake -DCMAKE_BUILD_TYPE=Debug -G Ninja ../..
+```
 
 # Running
 
