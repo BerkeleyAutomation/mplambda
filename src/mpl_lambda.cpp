@@ -41,28 +41,6 @@ namespace mpl::demo {
         }
     };
 
-    // template <class T, class U>
-    // struct is_convertable_state : std::false_type {};
-
-    // template <class T, class U>
-    // struct is_convertable_state<
-    //     std::tuple<Eigen::Quaternion<T>, Eigen::Matrix<T, 3, 1>>,
-    //     std::tuple<Eigen::Quaternion<U>, Eigen::Matrix<U, 3, 1>>>
-    //     : std::true_type {};
-
-    // template <class T, class U, int dim>
-    // struct is_convertable_state<
-    //     Eigen::Matrix<T, dim, 1>,
-    //     Eigen::Matrix<U, dim, 1>>
-    //     : std::true_type {};
-    
-    // template <class T, class U>
-    // std::vector<T> convertPath(std::vector<U>&& path) {
-    //     if constexpr (std::is_same_v<T, U>)
-    //         return path;
-    //     else
-    //         return ConvertPath<T, U>::apply(std::move(path));
-    // }
 
     template <class T>
     void sendPath(Comm& comm, T& solution) {
