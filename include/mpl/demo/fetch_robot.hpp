@@ -11,7 +11,7 @@ namespace mpl::demo {
     template <class S>
     class Origin {
         using Scalar = S;
-        using Transform = Eigen::Transform<Scalar, 3, Eigen::AffineCompact>;
+        using Transform = fcl::Transform3<S>; // Eigen::Transform<Scalar, 3, Eigen::AffineCompact>;
         using Vec3 = Eigen::Matrix<Scalar, 3, 1>;
         
         Transform m_;
@@ -53,7 +53,7 @@ namespace mpl::demo {
     class FetchRobot {
     public:
         using Scalar = S;
-        using Transform = Eigen::Transform<Scalar, 3, Eigen::AffineCompact>;
+        using Transform = fcl::Transform3<S>;
         using Frame = Transform;
         using Vec3 = Eigen::Matrix<Scalar, 3, 1>;
 
@@ -81,7 +81,10 @@ namespace mpl::demo {
 
         // Collision geometry does not change from one robot to the
         // next, so we keep around a static copy of it.
-        static FetchCollisionGeometry<S> collisionGeometry_;
+        static const auto& cg() {
+            static FetchCollisionGeometry<S> collisionGeometry_;
+            return collisionGeometry_;
+        }
 
         static Config jointMin() {
             Config q;
@@ -445,153 +448,127 @@ namespace mpl::demo {
             fcl::CollisionRequest<S> req;
             fcl::CollisionResult<S> res;
 
-            if (collide(
-                    &collisionGeometry_.base_, tfBaseLink(),
-                    &collisionGeometry_.forearmRollLink_, tfForearmRollLink(),
-                    req, res))
+            if (fcl::collide(&cg().base_, tfBaseLink(), &cg().forearmRoll_, tfForearmRollLink(), req, res))
                 return true;
 
-            if (collide(
-                    &collisionGeometry_.base_, tfBaseLink(),
-                    &collisionGeometry_.wristFlexLink_, tfWristFlexLink(),
-                    req, res))
+            if (fcl::collide(&cg().base_, tfBaseLink(), &cg().wristFlex_, tfWristFlexLink(), req, res))
                 return true;
 
-            if (collide(
-                    &collisionGeometry_.base_, tfBaseLink(),
-                    &collisionGeometry_.wristRollLink_, tfWristRollLink(),
-                    req, res))
+            if (fcl::collide(&cg().base_, tfBaseLink(), &cg().wristRoll_, tfWristRollLink(), req, res))
                 return true;
 
-            if (collide(
-                    &collisionGeometry_.base_, tfBaseLink(),
-                    &collisionGeometry_.gripper_, tfGripperLink(),
-                    req, res))
+            if (fcl::collide(&cg().base_, tfBaseLink(), &cg().gripper_, tfGripperLink(), req, res))
                 return true;
 
-            if (collide(
-                    &collisionGeometry_.torsoLift_, tfTorsoLiftLink(),
-                    &collisionGeometry_.forearmRoll_, tfForearmRollLink(),
-                    req, res))
+            if (fcl::collide(&cg().torsoLift_, tfTorsoLiftLink(), &cg().forearmRoll_, tfForearmRollLink(), req, res))
                 return true;
             
-            if (collide(
-                    &collisionGeometry_.torsoLift_, tfTorsoLiftLink(),
-                    &collisionGeometry_.wristFlex_, tfWristFlexLink(),
-                    req, res))
+            if (fcl::collide(&cg().torsoLift_, tfTorsoLiftLink(), &cg().wristFlex_, tfWristFlexLink(), req, res))
                 return true;
             
-            if (collide(
-                    &collisionGeometry_.torsoLift_, tfTorsoLiftLink(),
-                    &collisionGeometry_.wristRoll_, tfWristRollLink(),
-                    req, res))
+            if (fcl::collide(&cg().torsoLift_, tfTorsoLiftLink(), &cg().wristRoll_, tfWristRollLink(), req, res))
                 return true;
             
-            if (collide(
-                    &collisionGeometry_.torsoLift_, tfTorsoLiftLink(),
-                    &collisionGeometry_.gripper_, tfGripperLink(),
-                    req, res))
+            if (fcl::collide(&cg().torsoLift_, tfTorsoLiftLink(), &cg().gripper_, tfGripperLink(), req, res))
                 return true;
             
-            if (collide(
-                    &collisionGeometry_.shoulderPan_, tfShoulderPanLink(),
-                    &collisionGeometry_.forearmRoll_, tfForearmRollLink(),
-                    req, res))
+            if (fcl::collide(&cg().shoulderPan_, tfShoulderPanLink(), &cg().forearmRoll_, tfForearmRollLink(), req, res))
                 return true;
             
-            if (collide(
-                    &collisionGeometry_.shoulderPan_, tfShoulderPanLink(),
-                    &collisionGeometry_.wristFlex_, tfWristFlexLink(),
-                    req, res))
+            if (fcl::collide(&cg().shoulderPan_, tfShoulderPanLink(), &cg().wristFlex_, tfWristFlexLink(), req, res))
                 return true;
             
-            if (collide(
-                    &collisionGeometry_.shoulderPan_, tfShoulderPanLink(),
-                    &collisionGeometry_.wristRoll_, tfWristRollLink(),
-                    req, res))
+            if (fcl::collide(&cg().shoulderPan_, tfShoulderPanLink(), &cg().wristRoll_, tfWristRollLink(), req, res))
                 return true;
             
-            if (collide(
-                    &collisionGeometry_.shoulderPan_, tfShoulderPanLink(),
-                    &collisionGeometry_.gripper_, tfGripperLink(),
-                    req, res))
+            if (fcl::collide(&cg().shoulderPan_, tfShoulderPanLink(), &cg().gripper_, tfGripperLink(), req, res))
                 return true;
             
-            if (collide(
-                    &collisionGeometry_.shoulderLift_, tfShoulderLiftLink(),
-                    &collisionGeometry_.wristRoll_, tfWristRollLink(),
-                    req, res))
+            if (fcl::collide(&cg().shoulderLift_, tfShoulderLiftLink(), &cg().wristRoll_, tfWristRollLink(), req, res))
                 return true;
             
-            if (collide(
-                    &collisionGeometry_.upperarmRoll_, tfUpperarmRollLink(),
-                    &collisionGeometry_.wristRoll_, tfWristRollLink(),
-                    req, res))
+            if (fcl::collide(&cg().upperarmRoll_, tfUpperarmRollLink(), &cg().wristRoll_, tfWristRollLink(), req, res))
                 return true;
             
-            if (collide(
-                    &collisionGeometry_.upperarmRoll_, tfUpperarmRollLink(),
-                    &collisionGeometry_.gripper_, tfGripperLink(),
-                    req, res))
+            if (fcl::collide(&cg().upperarmRoll_, tfUpperarmRollLink(), &cg().gripper_, tfGripperLink(), req, res))
                 return true;
             
-            if (collide(
-                    &collisionGeometry_.upperarmRoll_, tfUpperarmRollLink(),
-                    &collisionGeometry_.head_, tfHeadLink(),
-                    req, res))
+            if (fcl::collide(&cg().upperarmRoll_, tfUpperarmRollLink(), &cg().head_, tfHeadLink(), req, res))
                 return true;
             
-            if (collide(
-                    &collisionGeometry_.elbowFlex_, tfElbowFlexLink(),
-                    &collisionGeometry_.head_, tfHeadLink(),
-                    req, res))
+            if (fcl::collide(&cg().elbowFlex_, tfElbowFlexLink(), &cg().head_, tfHeadLink(), req, res))
                 return true;
             
-            if (collide(
-                    &collisionGeometry_.forearmRoll_, tfForearmRollLink(),
-                    &collisionGeometry_.head_, tfHeadLink(),
-                    req, res))
+            if (fcl::collide(&cg().forearmRoll_, tfForearmRollLink(), &cg().head_, tfHeadLink(), req, res))
                 return true;
             
-            if (collide(
-                    &collisionGeometry_.wristFlex_, tfWristFlexLink(),
-                    &collisionGeometry_.neck_, tfNeckLink(),
-                    req, res))
+            if (fcl::collide(&cg().wristFlex_, tfWristFlexLink(), &cg().neck_, tfNeckLink(), req, res))
                 return true;
             
-            if (collide(
-                    &collisionGeometry_.wristFlex_, tfWristFlexLink(),
-                    &collisionGeometry_.head_, tfHeadLink(),
-                    req, res))
+            if (fcl::collide(&cg().wristFlex_, tfWristFlexLink(), &cg().head_, tfHeadLink(), req, res))
                 return true;
             
-            if (collide(
-                    &collisionGeometry_.wristRoll_, tfWristRollLink(),
-                    &collisionGeometry_.neck_, tfNeckLink(),
-                    req, res))
+            if (fcl::collide(&cg().wristRoll_, tfWristRollLink(), &cg().neck_, tfNeckLink(), req, res))
                 return true;
             
-            if (collide(
-                    &collisionGeometry_.wristRoll_, tfWristRollLink(),
-                    &collisionGeometry_.head_, tfHeadLink(),
-                    req, res))
+            if (fcl::collide(&cg().wristRoll_, tfWristRollLink(), &cg().head_, tfHeadLink(), req, res))
                 return true;
             
-            if (collide(
-                    &collisionGeometry_.gripper_, tfGripperLink(),
-                    &collisionGeometry_.neck_, tfNeckLink(),
-                    req, res))
+            if (fcl::collide(&cg().gripper_, tfGripperLink(), &cg().neck_, tfNeckLink(), req, res))
                 return true;
             
-            if (collide(
-                    &collisionGeometry_.gripper_, tfGripperLink(),
-                    &collisionGeometry_.head_, tfHeadLink(),
-                    req, res))
+            if (fcl::collide(&cg().gripper_, tfGripperLink(), &cg().head_, tfHeadLink(), req, res))
                 return true;
 
             if (gripperAxis_.translation()[2] < floorClearance_)
                 return true;
             
+            return false;
+        }
+
+        bool inCollisionWith(
+            const fcl::CollisionGeometry<S>* geom,
+            const Frame& frame)
+        {
+            fcl::CollisionRequest<S> req;
+            fcl::CollisionResult<S> res;
+
+            if (fcl::collide(geom, frame, &cg().base_, tfBaseLink(), req, res))
+                return true;
+
+            if (fcl::collide(geom, frame, &cg().torsoLift_, tfTorsoLiftLink(), req, res))
+                return true;
+
+            if (fcl::collide(geom, frame, &cg().shoulderPan_, tfShoulderPanLink(), req, res))
+                return true;
+
+            if (fcl::collide(geom, frame, &cg().shoulderLift_, tfShoulderLiftLink(), req, res))
+                return true;
+
+            if (fcl::collide(geom, frame, &cg().upperarmRoll_, tfUpperarmRollLink(), req, res))
+                return true;
+            
+            if (fcl::collide(geom, frame, &cg().elbowFlex_, tfElbowFlexLink(), req, res))
+                return true;
+
+            if (fcl::collide(geom, frame, &cg().forearmRoll_, tfForearmRollLink(), req, res))
+                return true;
+            
+            if (fcl::collide(geom, frame, &cg().wristFlex_, tfWristFlexLink(), req, res))
+                return true;
+
+            if (fcl::collide(geom, frame, &cg().wristRoll_, tfWristRollLink(), req, res))
+                return true;
+
+            if (fcl::collide(geom, frame, &cg().gripper_, tfGripperLink(), req, res))
+                return true;
+
+            if (fcl::collide(geom, frame, &cg().wristFlex_, tfWristFlexLink(), req, res))
+                return true;
+            
+            if (fcl::collide(geom, frame, &cg().head_, tfHeadLink(), req, res))
+                return true;
+
             return false;
         }
     };
