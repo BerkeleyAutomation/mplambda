@@ -69,6 +69,7 @@ namespace mpl::demo {
     };
     
     class AppOptions {
+        std::string scenario_;
         std::string algorithm_;
         std::string coordinator_;
         std::uint64_t problemId_;
@@ -83,7 +84,9 @@ namespace mpl::demo {
         std::string max_;
 
         double timeLimit_{std::numeric_limits<double>::infinity()};
-        double discretization_{0};
+        double checkResolution_{0};
+
+        bool singlePrecision_{false};
 
         static void usage(const char *argv0);
 
@@ -99,6 +102,12 @@ namespace mpl::demo {
     public:
         AppOptions(int argc, char* argv[]);
 
+        const std::string& scenario(bool required = true) const {
+            if (required && scenario_.empty())
+                throw std::invalid_argument("--scenario is required");
+            return scenario_;
+        }
+        
         const std::string& algorithm(bool required = true) const {
             if (required && algorithm_.empty())
                 throw std::invalid_argument("--algorithm is required");
@@ -127,6 +136,10 @@ namespace mpl::demo {
             return robot_;
         }
 
+        bool singlePrecision() const {
+            return singlePrecision_;
+        }
+
         template <class T>
         T start() const {
             return parse<T>("start", start_);
@@ -151,8 +164,8 @@ namespace mpl::demo {
             return timeLimit_;
         }
 
-        double discretization() const {
-            return discretization_;
+        double checkResolution(double defaultIfZero) const {
+            return checkResolution_ < 0 ? defaultIfZero : checkResolution_;
         }
     };
 }

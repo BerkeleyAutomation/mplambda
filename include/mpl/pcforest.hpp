@@ -327,6 +327,11 @@ namespace mpl {
 
     template <class Scenario>
     class Planner<Scenario, PCForest>::Solution {
+    public:
+        using State = typename Scenario::State;
+        using Distance = typename Scenario::Distance;
+        
+    private:
         const Edge *edge_;
 
         friend class Planner;

@@ -159,6 +159,11 @@ namespace mpl {
 
     template <class Scenario>
     class Planner<Scenario, PRRT>::Solution {
+    public:
+        using State = typename Scenario::State;
+        using Distance = typename Scenario::Distance;
+        
+    private:
         // TODO: need to somehow enforce that solutions should not
         // outlive the planner, otherwise both parent_ and node_ will
         // be invalid.  (CForest has the same issue)

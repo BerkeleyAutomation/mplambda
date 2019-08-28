@@ -164,7 +164,7 @@ int main(int argc, char *argv[]) try {
         options.max<Bound>(),
         options.algorithm(),
         options.timeLimit(),
-        options.discretization());
+        options.checkResolution(0));
     robot.loop();
 
     return EXIT_SUCCESS;
