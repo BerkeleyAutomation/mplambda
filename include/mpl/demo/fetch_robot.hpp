@@ -383,6 +383,9 @@ namespace mpl::demo {
                 return true;
             }
 
+            if (maxIters == 0)
+                return false;
+
             Jacobian J = L.asDiagonal() * jacobian();
             S v = 2;
             S lambda = 10;
@@ -435,7 +438,7 @@ namespace mpl::demo {
 
                     J = L.asDiagonal() * jacobian();
                     S x = 2*rho - 1;
-                    lambda *= std::max(1/3.0, 1 - x*x*x);
+                    lambda *= std::max(1/S(3), 1 - x*x*x);
                     v = 2;
                 }                     
             }

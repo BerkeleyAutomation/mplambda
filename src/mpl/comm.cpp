@@ -70,6 +70,14 @@ void mpl::Comm::tryConnect() {
     state_ = DISCONNECTED;
 }
 
+void mpl::Comm::connect(const std::string& host) {
+    auto i = host.find(':');
+    if (i == std::string::npos)
+        connect(host, DEFAULT_PORT);
+    else
+        connect(host.substr(0, i), std::stoi(host.substr(i+1)));
+}
+
 void mpl::Comm::connect(const std::string& host, int port) {
     JI_LOG(INFO) << "connecting to [" << host << "], port " << port;
     

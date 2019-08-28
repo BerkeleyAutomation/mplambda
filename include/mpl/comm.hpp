@@ -55,14 +55,18 @@ namespace mpl {
         inline operator bool () const {
             return socket_ != -1;
         }
-        
-        void connect(const std::string& host, int port = DEFAULT_PORT);
+
+        void connect(const std::string& host);
+        void connect(const std::string& host, int port);
         void process();
         template <class PathFn>
         void process(PathFn);
 
         template <class S>
         void sendPath(S cost, std::vector<std::tuple<Eigen::Quaternion<S>, Eigen::Matrix<S, 3, 1>>>&& path);
+        template <class S, int dim>
+        void sendPath(S cost, std::vector<Eigen::Matrix<S, dim, 1>>&& path);
+        
         void sendDone();
 
         inline bool isDone() {
@@ -79,6 +83,15 @@ void mpl::Comm::sendPath(
 {
     writeQueue_.push_back(packet::PathSE3<S>(cost, std::move(path)));
 }
+
+template <class S, int dim>
+void mpl::Comm::sendPath(
+    S cost,
+    std::vector<Eigen::Matrix<S, dim, 1>>&& path)
+{
+    abort(); // TODO!
+}
+    
 
 template <class PacketFn>
 void mpl::Comm::processImpl(PacketFn fn) {

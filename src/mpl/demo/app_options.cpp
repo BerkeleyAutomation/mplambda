@@ -29,6 +29,7 @@ double mpl::demo::OptionParser<double>::parse(
 void mpl::demo::AppOptions::usage(const char *argv0) {
     std::cerr << "Usage: " << argv0 << R"( [options]
 Options:
+  -S, --scenario=(se3|fetch)
   -a, --algorithm=(rrt|cforest)
   -c, --coordinator=HOST:PORT
   -I, --problem-id=ID
@@ -39,12 +40,14 @@ Options:
   -g, --goal=W,I,J,K,X,Y,Z
   -m, --min=X,Y,Z
   -M, --max=X,Y,Z
-  -d, --discretization=DIST   (0 means use default)
+  -d, --check-resolution=DIST   (0 means use default)
+  -f, --float
 )";
 }
 
 mpl::demo::AppOptions::AppOptions(int argc, char *argv[]) {
     static struct option longopts[] = {
+        { "scenario", required_argument, NULL, 'S' },
         { "algorithm", required_argument, NULL, 'a' },
         { "env", required_argument, NULL, 'e' },
         { "robot", required_argument, NULL, 'r' },
@@ -55,15 +58,20 @@ mpl::demo::AppOptions::AppOptions(int argc, char *argv[]) {
         { "coordinator", required_argument, NULL, 'c' },
         { "problem-id", required_argument, NULL, 'I' },
         { "time-limit", required_argument, NULL, 't' },
-        { "discretization", required_argument, NULL, 'd' },
-                
+        { "check-resolution", required_argument, NULL, 'd' },
+        { "discretization", required_argument, NULL, 'd' }, // less-descriptive alieas
+        { "float", no_argument, NULL, 'f' },
+        
         { NULL, 0, NULL, 0 }
     };
 
-    for (int ch ; (ch = getopt_long(argc, argv, "a:e:r:g:s:m:M:c:I:t:d:", longopts, NULL)) != -1 ; ) {
+    for (int ch ; (ch = getopt_long(argc, argv, "S:a:e:r:g:s:m:M:c:I:t:d:f", longopts, NULL)) != -1 ; ) {
         char *endp;
                 
         switch (ch) {
+        case 'S':
+            scenario_ = optarg;
+            break;
         case 'a':
             algorithm_ = optarg;
             break;
@@ -99,9 +107,12 @@ mpl::demo::AppOptions::AppOptions(int argc, char *argv[]) {
                 throw std::invalid_argument("bad value for --time-limit");
             break;
         case 'd':
-            discretization_ = std::strtod(optarg, &endp);
-            if (endp == optarg || *endp || discretization_ < 0)
-                throw std::invalid_argument("bad value for --discretization");
+            checkResolution_ = std::strtod(optarg, &endp);
+            if (endp == optarg || *endp || checkResolution_ < 0)
+                throw std::invalid_argument("bad value for --check-resolution");
+            break;
+        case 'f':
+            singlePrecision_ = true;
             break;
         default:
             usage(argv[0]);

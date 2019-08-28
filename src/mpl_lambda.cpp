@@ -1,5 +1,6 @@
 #include <mpl/demo/app_options.hpp>
 #include <mpl/demo/se3_rigid_body_scenario.hpp>
+#include <mpl/demo/fetch_scenario.hpp>
 #include <mpl/prrt.hpp>
 #include <mpl/comm.hpp>
 #include <mpl/pcforest.hpp>
@@ -10,181 +11,218 @@
 namespace mpl::demo {
 
     template <class T, class U>
-    struct ConvertPath;
+    struct ConvertState : std::false_type {};
 
     template <class R, class S>
-    struct ConvertPath<
+    struct ConvertState<
         std::tuple<Eigen::Quaternion<R>, Eigen::Matrix<R, 3, 1>>,
         std::tuple<Eigen::Quaternion<S>, Eigen::Matrix<S, 3, 1>>>
+        : std::true_type
     {
         using Result = std::tuple<Eigen::Quaternion<R>, Eigen::Matrix<R, 3, 1>>;
         using Source = std::tuple<Eigen::Quaternion<S>, Eigen::Matrix<S, 3, 1>>;
         
-        static std::vector<Result> apply(std::vector<Source>&& arg) {
-            std::vector<Result> r;
-            r.reserve(arg.size());
-            for (auto& q : arg)
-                r.emplace_back(
-                    std::get<0>(q).template cast<R>(),
-                    std::get<1>(q).template cast<R>());
-            return r;
+        static Result apply(const Source& q) {
+            return Result(
+                std::get<0>(q).template cast<R>(),
+                std::get<1>(q).template cast<R>());
         }
     };
-    
-    template <class T, class U>
-    std::vector<T> convertPath(std::vector<U>&& path) {
-        if constexpr (std::is_same_v<T, U>)
-            return path;
-        else
-            return ConvertPath<T, U>::apply(std::move(path));
-    }
-    
-    template <class Scenario>
-    class App {
-        using State = typename Scenario::State;
-        using Distance = typename Scenario::Distance;
-        using Bound = Eigen::Matrix<Distance, 3, 1>;
 
-        demo::AppOptions options_;
-        Comm comm_;
+    template <class R, class S, int dim>
+    struct ConvertState<Eigen::Matrix<R, dim, 1>, Eigen::Matrix<S, dim, 1>>
+        : std::true_type
+    {
+        using Result = Eigen::Matrix<R, dim, 1>;
+        using Source = Eigen::Matrix<S, dim, 1>;
 
-    public:
-        App(int argc, char *argv[])
-            : options_(argc, argv)
-        {
+        static Result apply(const Source& q) {
+            return q.template cast<R>();
         }
+    };
 
-        void connect() {
-            const auto& coordinator = options_.coordinator();
-            
-            if (coordinator.empty())
-                return;
+    // template <class T, class U>
+    // struct is_convertable_state : std::false_type {};
 
-            comm_.setProblemId(options_.problemId());
+    // template <class T, class U>
+    // struct is_convertable_state<
+    //     std::tuple<Eigen::Quaternion<T>, Eigen::Matrix<T, 3, 1>>,
+    //     std::tuple<Eigen::Quaternion<U>, Eigen::Matrix<U, 3, 1>>>
+    //     : std::true_type {};
 
-            auto i = coordinator.find(':');
-            if (i == std::string::npos)
-                comm_.connect(coordinator);
-            else
-                comm_.connect(coordinator.substr(0, i), std::stoi(coordinator.substr(i+1)));
-        }
+    // template <class T, class U, int dim>
+    // struct is_convertable_state<
+    //     Eigen::Matrix<T, dim, 1>,
+    //     Eigen::Matrix<U, dim, 1>>
+    //     : std::true_type {};
+    
+    // template <class T, class U>
+    // std::vector<T> convertPath(std::vector<U>&& path) {
+    //     if constexpr (std::is_same_v<T, U>)
+    //         return path;
+    //     else
+    //         return ConvertPath<T, U>::apply(std::move(path));
+    // }
 
-        template <class T>
-        void sendPath(T& solution) {
+    template <class T>
+    void sendPath(Comm& comm, T& solution) {
+        using State = typename T::State;
+        using Distance = typename T::Distance;
+        
+        if (comm) {
             std::vector<State> path;
             solution.visit([&] (const State& q) { path.push_back(q); });
             std::reverse(path.begin(), path.end());
             Distance cost = solution.cost();
-            comm_.sendPath(cost, std::move(path));
+            comm.sendPath(cost, std::move(path));
+        }
+    }
+
+    template <class Scenario, class Algorithm, class ... Args>
+    void runPlanner(const demo::AppOptions& options, Args&& ... args) {
+        using State = typename Scenario::State;
+        using Distance = typename Scenario::Distance;
+
+        State qStart = options.start<State>();
+
+        Comm comm_;
+
+        if (!options.coordinator().empty()) {
+            comm_.setProblemId(options.problemId());
+            comm_.connect(options.coordinator());
         }
 
-        template <class Algorithm>
-        void runImpl() {
-            State qStart = options_.start<State>();
-            State qGoal = options_.goal<State>();
-            Bound min = options_.min<Bound>();
-            Bound max = options_.max<Bound>();
-            
-            JI_LOG(INFO) << "start: " << qStart;
-            JI_LOG(INFO) << "goal: " << qGoal;
-            JI_LOG(INFO) << "bounds: " << min << " to " << max;
+        Planner<Scenario, Algorithm> planner(std::forward<Args>(args)...);
 
-            double discretization = options_.discretization();
-            if (discretization <= 0)
-                discretization = 0.1;
-            
-            Planner<Scenario, Algorithm> planner(
-                options_.env(),
-                options_.robot(),
-                qGoal, min, max, discretization);
+        planner.addStart(qStart);
 
-            planner.addStart(qStart);
+        using Clock = std::chrono::steady_clock;
+        Clock::duration maxElapsedSolveTime = std::chrono::duration_cast<Clock::duration>(
+            std::chrono::duration<double>(options.timeLimit()));
+        auto start = Clock::now();
 
-            using Clock = std::chrono::steady_clock;
-            Clock::duration maxElapsedSolveTime = std::chrono::duration_cast<Clock::duration>(
-                std::chrono::duration<double>(options_.timeLimit()));
-            auto start = Clock::now();
+        // record the initial solution (it should not be an actual
+        // solution).  We use this later to perform the C-FOREST path
+        // update, and to check if we should write out one last
+        // solution.
+        auto solution = planner.solution();
+        assert(!solution);
 
-            auto solution = planner.solution();
-
-            if constexpr (Algorithm::asymptotically_optimal) {
-                // asymptotically-optimal planner, run for the
-                // time-limit, and update the graph with best paths
-                // from the network.
-                planner.solve([&] {
-                    if (maxElapsedSolveTime.count() > 0 && Clock::now() - start > maxElapsedSolveTime)
-                        return true;
-                    comm_.process(
-                        [&] (auto cost, auto&& path) {
-                            planner.addPath(cost, convertPath<State>(std::forward<decltype(path)>(path)));
-
-                            // update our best solution if it has the
-                            // same cost as the solution we just got
-                            // from a peer.  If we have a different
-                            // solution, then we'll update and send
-                            // the solution after the comm_.process().
-                            // This avoids re-broadcasting the same
-                            // solution.
-                            auto newSol = planner.solution();
-                            if (newSol.cost() == cost)
-                                solution = newSol;
-                        });
-
-                    auto s = planner.solution();
-                    if (s < solution) {
-                        sendPath(s);
-                        solution = s;
-                    }
-                    
-                    return comm_.isDone();
-                });
-            } else {
-                // non-asymptotically-optimal.  Stop as soon as we
-                // have a solution (either locally or from the
-                // network)
-                planner.solve([&] {
-                    if (maxElapsedSolveTime.count() > 0 && Clock::now() - start > maxElapsedSolveTime)
-                        return true;
-                    comm_.process();
-                    return comm_.isDone() || planner.isSolved();
-                });
-            }
-            
-
-            JI_LOG(INFO) << "solution " << (planner.isSolved() ? "" : "not ") << "found after " << (Clock::now() - start);
-            JI_LOG(INFO) << "graph size = " << planner.size();
-
-            
-            auto finalSolution = planner.solution();
-            if (finalSolution != solution) {
-                finalSolution.visit([] (const State& q) { JI_LOG(INFO) << "  " << q; });
-                sendPath(finalSolution);
-            }
-            
-            comm_.sendDone();
+        if constexpr (Algorithm::asymptotically_optimal) {
+            // asymptotically-optimal planner, run for the
+            // time-limit, and update the graph with best paths
+            // from the network.
+            planner.solve([&] {
+                if (maxElapsedSolveTime.count() > 0 && Clock::now() - start > maxElapsedSolveTime)
+                    return true;
+                comm_.process(
+                    [&] (auto cost, auto&& pktPath) {
+                        using Path = std::decay_t<decltype(pktPath)>;
+                        using PathState = typename Path::value_type;
+                        if constexpr (std::is_same_v<State, PathState>) {
+                            planner.addPath(cost, std::forward<decltype(pktPath)>(pktPath));
+                        } else if constexpr (ConvertState<State,PathState>::value) {
+                            std::vector<State> path;
+                            path.reserve(pktPath.size());
+                            for (auto& q : pktPath)
+                                path.emplace_back(ConvertState<State,PathState>::apply(q));
+                            planner.addPath(cost, std::move(path));
+                        } else {
+                            JI_LOG(WARN) << "received incompatible path type!";
+                            return;
+                        }
+                        
+                        // update our best solution if it has the same
+                        // cost as the solution we just got from a
+                        // peer.  If we have a different solution,
+                        // then we'll update and send the solution
+                        // after the comm_.process().  This avoids
+                        // re-broadcasting the same solution.
+                        auto newSol = planner.solution();
+                        if (newSol.cost() == cost)
+                            solution = newSol;
+                    });
+                
+                auto s = planner.solution();
+                if (s < solution) {
+                    sendPath(comm_, s);
+                    solution = s;
+                }
+                
+                return comm_.isDone();
+            });
+        } else {
+            // non-asymptotically-optimal.  Stop as soon as we
+            // have a solution (either locally or from the
+            // network)
+            planner.solve([&] {
+                if (maxElapsedSolveTime.count() > 0 && Clock::now() - start > maxElapsedSolveTime)
+                    return true;
+                comm_.process();
+                return comm_.isDone() || planner.isSolved();
+            });
         }
-
-        void run() {
-            connect();
             
-            if ("rrt" == options_.algorithm())
-                runImpl<mpl::PRRT>();
-            else if ("cforest" == options_.algorithm())
-                runImpl<mpl::PCForest>();
-            else
-                throw std::invalid_argument("unknown algorithm: " + options_.algorithm());
+        
+        JI_LOG(INFO) << "solution " << (planner.isSolved() ? "" : "not ") << "found after " << (Clock::now() - start);
+        JI_LOG(INFO) << "graph size = " << planner.size();
+            
+        auto finalSolution = planner.solution();
+        if (finalSolution != solution) {
+            finalSolution.visit([] (const State& q) { JI_LOG(INFO) << "  " << q; });
+            sendPath(comm_, finalSolution);
         }
-    };
+            
+        comm_.sendDone();
+    }
+
+
+    template <class Algorithm, class S>
+    void runSelectScenario(const demo::AppOptions& options) {
+        if (options.scenario() == "se3") {
+            using Scenario = mpl::demo::SE3RigidBodyScenario<S>;
+            using Bound = typename Scenario::Bound;
+            using State = typename Scenario::State;
+            State goal = options.goal<State>();
+            Bound min = options.min<Bound>();
+            Bound max = options.max<Bound>();
+            runPlanner<Scenario, Algorithm>(
+                options, options.env(), options.robot(), goal, min, max,
+                options.checkResolution(0.1));
+        } else if (options.scenario() == "fetch") {
+            using Scenario = mpl::demo::FetchScenario<S>;
+            using State = typename Scenario::State;
+            using Frame = typename Scenario::Frame;
+            Frame goal; // TODO: get from options
+            runPlanner<Scenario, Algorithm>(
+                options, options.env(), goal,
+                options.checkResolution(0.1));
+        } else {
+            throw std::invalid_argument("bad scenario: " + options.scenario());
+        }
+    }
+
+    template <class Algorithm>
+    void runSelectPrecision(const demo::AppOptions& options) {
+        if (options.singlePrecision()) {
+            runSelectScenario<Algorithm, float>(options);
+        } else {
+            runSelectScenario<Algorithm, double>(options);
+        }
+    }
+
+    void runSelectPlanner(const demo::AppOptions& options) {
+        if (options.algorithm() == "rrt")
+            runSelectPrecision<mpl::PRRT>(options);
+        else if (options.algorithm() == "cforest")
+            runSelectPrecision<mpl::PCForest>(options);
+        else
+            throw std::invalid_argument("unknown algorithm: " + options.algorithm());
+    }
 }
 
 int main(int argc, char *argv[]) try {
-    using S = double;
-    using Scenario = mpl::demo::SE3RigidBodyScenario<S>;
-
-    mpl::demo::App<Scenario> app(argc, argv);
-
-    app.run();
-
+    mpl::demo::runSelectPlanner(mpl::demo::AppOptions(argc, argv));
     return EXIT_SUCCESS;
 } catch (const std::invalid_argument& ex) {
     std::cerr << "Invalid argument: " << ex.what() << std::endl;
