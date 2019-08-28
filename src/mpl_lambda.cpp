@@ -200,7 +200,8 @@ namespace mpl::demo {
 }
 
 int main(int argc, char *argv[]) try {
-    mpl::demo::runSelectPlanner(mpl::demo::AppOptions(argc, argv));
+    mpl::demo::AppOptions options(argc, argv);
+    mpl::demo::runSelectPlanner(options);
     return EXIT_SUCCESS;
 } catch (const std::invalid_argument& ex) {
     std::cerr << "Invalid argument: " << ex.what() << std::endl;
