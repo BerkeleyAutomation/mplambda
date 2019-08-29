@@ -81,7 +81,8 @@ void mpl::Comm::sendPath(
     S cost,
     std::vector<std::tuple<Eigen::Quaternion<S>, Eigen::Matrix<S, 3, 1>>>&& path)
 {
-    writeQueue_.push_back(packet::PathSE3<S>(cost, std::move(path)));
+    using State = std::tuple<Eigen::Quaternion<S>, Eigen::Matrix<S, 3, 1>>;
+    writeQueue_.push_back(packet::Path<State>(cost, std::move(path)));
 }
 
 template <class S, int dim>
@@ -89,7 +90,8 @@ void mpl::Comm::sendPath(
     S cost,
     std::vector<Eigen::Matrix<S, dim, 1>>&& path)
 {
-    abort(); // TODO!
+    using State = Eigen::Matrix<S, dim, 1>;
+    writeQueue_.push_back(packet::Path<State>(cost, std::move(path)));
 }
     
 
@@ -137,8 +139,7 @@ template <class PathFn>
 void mpl::Comm::process(PathFn fn) {
     processImpl([&] (auto&& pkt) {
         using T = std::decay_t<decltype(pkt)>;
-        if constexpr (std::is_same_v<T, packet::PathSE3<float>> ||
-                      std::is_same_v<T, packet::PathSE3<double>>) {
+        if constexpr (packet::is_path<T>::value) {
             fn(pkt.cost(), std::move(pkt).path());
         } else {
             handle(std::forward<decltype(pkt)>(pkt));

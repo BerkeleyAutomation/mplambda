@@ -11,9 +11,11 @@ namespace mpl::packet {
     using Size = std::uint32_t;
 
     // hexdump -n 4 -e '"0x" 1 "%08x" "\n"' /dev/urandom 
-    static constexpr Type PROBLEM_SE3 = 0xdbb69672;
+    static constexpr Type PROBLEM = 0x8179e3ee;
     static constexpr Type HELLO = 0x3864caca;
     static constexpr Type PATH_SE3 = 0xa9cb6e7d;
+    static constexpr Type PATH_RVF = 0xb10b0c45;
+    static constexpr Type PATH_RVD = PATH_RVF + 0x100;
     static constexpr Type DONE = 0x6672e31a;
 
     static constexpr std::size_t MAX_PACKET_SIZE = 1024*1024;
@@ -29,137 +31,51 @@ namespace mpl::packet {
         }
     };
 
-    template <class S>
-    class ProblemSE3 {
-        // do not use std::is_floating_point_v, since we don't support
-        // long double (or any other thing that might qualify as a
-        // floating point value)
-        static_assert(std::is_same_v<S, float> || std::is_same_v<S, double>,
-                      "S must be float or double");
-
-        using State = std::tuple<Eigen::Quaternion<S>, Eigen::Matrix<S,3,1>>;
-        using Bound = Eigen::Matrix<S, 3, 1>;
-
+    class Problem {
     public:
-        static constexpr Type TYPE = PROBLEM_SE3 + sizeof(S)/8;
+        static constexpr Type TYPE = PROBLEM;
+
         static std::string name() {
-            return (std::is_same_v<S, float>)
-                ? "ProblemSE3<float>"
-                : "ProblemSE3<double>";
+            return "Problem";
         }
         
-        State start_;
-        State goal_;
-        Bound min_;
-        Bound max_;
-
-        std::uint32_t algorithm_;
-        std::uint32_t timeLimitMillis_;
-
-        double discretization_;
-
-        std::string envMesh_;
-        std::string robotMesh_;
+    private:
+        std::vector<std::string> args_;
 
     public:
-        inline ProblemSE3(
-            const std::string& envMesh,
-            const std::string& robotMesh,
-            const State& start, const State& goal,
-            const Bound& min, const Bound& max,
-            std::uint32_t algorithm,
-            std::uint32_t timeLimitMillis,
-            double discretization)
-            : start_(start)
-            , goal_(goal)
-            , min_(min)
-            , max_(max)
-            , envMesh_(envMesh)
-            , robotMesh_(robotMesh)
-            , algorithm_(algorithm)
-            , timeLimitMillis_(timeLimitMillis)
-            , discretization_(discretization)
-        {
+        Problem(int argc, char* argv[]) {
+            args_.reserve(argc-1);
+            for (int i=1 ; i<argc ; ++i)
+                args_.push_back(argv[i]);
         }
 
-        inline ProblemSE3(Type, BufferView buf)
-            : start_{buf.get<State>()}
-            , goal_{buf.get<State>()}
-            , min_{buf.get<Bound>()}
-            , max_{buf.get<Bound>()}
-            , algorithm_{buf.get<std::uint32_t>()}
-            , timeLimitMillis_{buf.get<std::uint32_t>()}
-            , discretization_{buf.get<double>()}
-        {
-            std::uint8_t len = buf.get<std::uint8_t>();
-            if (len > buf.remaining())
-                throw protocol_error("invalid string length in `problem` packet");
-            
-            envMesh_ = buf.getString(len);
-            robotMesh_ = buf.getString();
+        inline Problem(Type, BufferView buf) {
+            std::size_t n = buf.get<std::uint8_t>();
+            args_.reserve(n);
+            for (std::size_t i=0 ; i<n ; ++i) {
+                std::size_t len = buf.get<std::uint8_t>();
+                args_.push_back(buf.getString(len));
+            }
         }
 
         inline operator Buffer () const {
-            Size size =
-                buffer_size_v<Type> +
-                buffer_size_v<Size> +
-                buffer_size_v<State>*2 +
-                buffer_size_v<Bound>*2 +
-                buffer_size_v<std::uint32_t>*2 +
-                buffer_size_v<double> +
-                1 + envMesh_.size() + robotMesh_.size();
-            
+            Size size = buffer_size_v<Type> + buffer_size_v<Size> + args_.size() + 1;
+            for (const std::string& s : args_)
+                size += s.size();
             Buffer buf{size};
             buf.put(TYPE);
             buf.put(size);
-            buf.put(start_);
-            buf.put(goal_);
-            buf.put(min_);
-            buf.put(max_);
-            buf.put(algorithm_);
-            buf.put(timeLimitMillis_);
-            buf.put(discretization_);
-            buf.put(static_cast<std::uint8_t>(envMesh_.size()));
-            buf.put(envMesh_);
-            buf.put(robotMesh_);
+            buf.put(static_cast<std::uint8_t>(args_.size()));
+            for (const std::string& s : args_) {
+                buf.put(static_cast<std::uint8_t>(s.size()));
+                buf.put(s);
+            }
             buf.flip();
             return buf;
         }
 
-        inline const auto& envMesh() const {
-            return envMesh_;
-        }
-
-        inline const auto& robotMesh() const {
-            return robotMesh_;
-        }
-
-        inline const auto& start() const {
-            return start_;
-        }
-
-        inline const auto& goal() const {
-            return goal_;
-        }
-
-        inline const auto& min() const {
-            return min_;
-        }
-
-        inline const auto& max() const {
-            return max_;
-        }
-
-        inline auto algorithm() const {
-            return algorithm_;
-        }
-
-        inline auto timeLimitMillis() const {
-            return timeLimitMillis_;
-        }
-
-        inline double discretization() const {
-            return discretization_;
+        const std::vector<std::string>& args() const {
+            return args_;
         }
     };
     
@@ -229,33 +145,53 @@ namespace mpl::packet {
         }
     };
 
-    template <class S>
-    class PathSE3 {
+    template <class State>
+    class PathBase;
+
+    template <class S, int dim>
+    class PathBase<Eigen::Matrix<S, dim, 1>> {
     public:
-        using State = std::tuple<Eigen::Quaternion<S>, Eigen::Matrix<S, 3, 1>>;
+        using Scalar = S;
+        static constexpr Type TYPE = (std::is_same_v<S, float> ? PATH_RVF : PATH_RVD) + dim;
+
+        static std::string name() {
+            return (std::is_same_v<S, float> ? "Path<RVF" : "Path<RVD")
+                + std::to_string(dim) + ">";
+        }
+    };
+
+    template <class S>
+    class PathBase<std::tuple<Eigen::Quaternion<S>, Eigen::Matrix<S, 3, 1>>> {
+    public:
+        using Scalar = S;
         static constexpr Type TYPE = PATH_SE3 + sizeof(S)/8;
 
         static std::string name() {
-            return std::is_same_v<S, float>
-                ? "PathSE3<float>"
-                : "PathSE3<double>";
+            return (std::is_same_v<S,float> ? "Path<SE3F>" : "Path<SE3D>");
         }
-       
+    };
+
+
+    template <class State>
+    class Path : public PathBase<State> {
+        using Base = PathBase<State>;
+        using Scalar = typename Base::Scalar;
+        
     private:
         static constexpr std::size_t stateSize_ = buffer_size_v<State>;
 
-        S cost_;
+        Scalar cost_;
         std::vector<State> path_;
-        
+
     public:
-        explicit PathSE3(S cost, std::vector<State>&& path)
+        explicit Path(Scalar cost, std::vector<State>&& path)
             : cost_(cost)
             , path_(std::move(path))
         {
         }
 
-        inline PathSE3(Type, BufferView buf)
-            : cost_(buf.get<S>())
+        inline Path(Type, BufferView buf)
+            : cost_(buf.get<Scalar>())
         {
             if (buf.remaining() % stateSize_ != 0)
                 throw protocol_error("invalid path packet size: " + std::to_string(buf.remaining()));
@@ -268,10 +204,10 @@ namespace mpl::packet {
 
         inline operator Buffer () const {
             Size size = buffer_size_v<Type> + buffer_size_v<Size>
-                + buffer_size_v<S>
+                + buffer_size_v<Scalar>
                 + stateSize_ * path_.size();
             Buffer buf{size};
-            buf.put(TYPE);
+            buf.put(Base::TYPE);
             buf.put(size);
             buf.put(cost_);
             for (const State& q : path_)
@@ -280,7 +216,7 @@ namespace mpl::packet {
             return buf;
         }
 
-        S cost() const {
+        Scalar cost() const {
             return cost_;
         }
 
@@ -292,6 +228,12 @@ namespace mpl::packet {
             return std::move(path_);
         }
     };
+
+    template <class Packet>
+    struct is_path : std::false_type {};
+
+    template <class State>
+    struct is_path<Path<State>> : std::true_type {};
 
     template <class Fn>
     std::size_t parse(Buffer& buf, Fn fn) {
@@ -324,17 +266,26 @@ namespace mpl::packet {
         case DONE:
             fn(Done(type, buf.view(size)));
             break;            
-        case PROBLEM_SE3:
-            fn(ProblemSE3<float>(type, buf.view(size)));
-            break;
-        case PROBLEM_SE3+1:
-            fn(ProblemSE3<double>(type, buf.view(size)));
+        // case PROBLEM_SE3:
+        //     fn(ProblemSE3<float>(type, buf.view(size)));
+        //     break;
+        // case PROBLEM_SE3+1:
+        //     fn(ProblemSE3<double>(type, buf.view(size)));
+        //     break;
+        case PROBLEM:
+            fn(Problem(type, buf.view(size)));
             break;
         case PATH_SE3:
-            fn(PathSE3<float>(type, buf.view(size)));
+            fn(Path<std::tuple<Eigen::Quaternion<float>, Eigen::Matrix<float, 3, 1>>>(type, buf.view(size)));
             break;
         case PATH_SE3+1:
-            fn(PathSE3<double>(type, buf.view(size)));
+            fn(Path<std::tuple<Eigen::Quaternion<double>, Eigen::Matrix<double, 3, 1>>>(type, buf.view(size)));
+            break;
+        case PATH_RVF+8:
+            fn(Path<Eigen::Matrix<float, 8, 1>>(type, buf.view(size)));
+            break;
+        case PATH_RVD+8:
+            fn(Path<Eigen::Matrix<double, 8, 1>>(type, buf.view(size)));
             break;
         default:
             throw protocol_error("bad packet type: " + std::to_string(type));

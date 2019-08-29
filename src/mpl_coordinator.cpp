@@ -16,8 +16,10 @@
 #include <fcntl.h>
 
 namespace mpl {
-    template <class S>
-    std::pair<int, int> launchLambda(std::uint64_t pId, packet::ProblemSE3<S>& prob);
+    // template <class S>
+    // std::pair<int, int> launchLambda(std::uint64_t pId, packet::ProblemSE3<S>& prob);
+
+    std::pair<int, int> launchLambda(std::uint64_t pId, packet::Problem& prob);
 
     class Coordinator {
         using ID = std::uint64_t;
@@ -75,8 +77,7 @@ namespace mpl {
 
         void loop();
 
-        template <class S>
-        void launchLambdas(ID groupId, packet::ProblemSE3<S>&& prob, int nLambdas);
+        void launchLambdas(ID groupId, packet::Problem&& prob, int nLambdas);
         
         Group* createGroup(Connection* initiator);
         Group* addToGroup(ID id, Connection* conn);
@@ -160,9 +161,8 @@ namespace mpl {
             }
         }
 
-        template <class S>
-        void process(packet::ProblemSE3<S>&& pkt) {
-            JI_LOG(INFO) << "got ProblemSE3 " << sizeof(S);
+        void process(packet::Problem&& pkt) {
+            JI_LOG(INFO) << "got Problem";
             if (group_)
                 coordinator_.done(group_, this);
             
@@ -171,9 +171,9 @@ namespace mpl {
             coordinator_.launchLambdas(group_->first, std::move(pkt), nLambdas);
         }
 
-        template <class S>
-        void process(packet::PathSE3<S>&& pkt) {
-            JI_LOG(INFO) << "got PathSE3 " << sizeof(S);
+        template <class State>
+        void process(packet::Path<State>&& pkt) {
+            JI_LOG(INFO) << "got Path " << sizeof(State);
             for (auto& q : pkt.path())
                 JI_LOG(TRACE) << "  " << q;
 
@@ -240,9 +240,8 @@ namespace mpl {
 
 // returns a pair of process-id and pipe-fd associated with the
 // child process
-template <class S>
-std::pair<int, int> mpl::launchLambda(std::uint64_t pId, packet::ProblemSE3<S>& prob) {
-    static const std::string resourceDirectory = "../../resources/";
+std::pair<int, int> mpl::launchLambda(std::uint64_t pId, packet::Problem& prob) {
+    // static const std::string resourceDirectory = "../../resources/";
     static int lambdaId;
     ++lambdaId;
 
@@ -264,60 +263,37 @@ std::pair<int, int> mpl::launchLambda(std::uint64_t pId, packet::ProblemSE3<S>& 
     ::close(p[0]);
     
     // child process
-    Eigen::IOFormat fmt(Eigen::FullPrecision, Eigen::DontAlignCols, ",", ",", "", "", "", "");
+    // Eigen::IOFormat fmt(Eigen::FullPrecision, Eigen::DontAlignCols, ",", ",", "", "", "", "");
     
-    std::string path = "./mpl_lambda";
-    
+    std::string path = "./mpl_lambda_pseudo";
+
     std::string groupId = std::to_string(pId);
-    std::string env = resourceDirectory + prob.envMesh();
-    std::string robot = resourceDirectory + prob.robotMesh();
+
+    std::vector<const char*> argv;
+    argv.reserve(prob.args().size()+1);
+
+    // argv[0] is the program name
+    argv.push_back(path.c_str());
+
+    // need to add the group identifier
+    argv.push_back("-I");
+    argv.push_back(groupId.c_str());
     
-    std::string discretization = std::to_string(prob.discretization());
-    
-    std::string alg;
-    if (prob.algorithm() == packet::ALGORITHM_RRT)
-        alg = "rrt";
-    else if (prob.algorithm() == packet::ALGORITHM_CFOREST)
-        alg = "cforest";
-    else
-        alg = "unknown";
-    
-    std::string timeLimit = std::to_string(prob.timeLimitMillis() / 1e3);
-    
-    std::string start = to_string(
-        std::get<0>(prob.start()).coeffs().format(fmt), ",",
-        std::get<1>(prob.start()).format(fmt));
-    std::string goal = to_string(
-        std::get<0>(prob.goal()).coeffs().format(fmt), ",",
-        std::get<1>(prob.goal()).format(fmt));
-    
-    std::string min = to_string(prob.min().format(fmt));
-    std::string max = to_string(prob.max().format(fmt));
-    
-    const char * const argv[] = {
-        path.c_str(),
-        "--coordinator=localhost",
-        "--algorithm", alg.c_str(),
-        "-I", groupId.c_str(),
-        "-t", timeLimit.c_str(),
-        "-d", discretization.c_str(),
-        "--env", env.c_str(),
-        "--robot", robot.c_str(),
-        "--start", start.c_str(),
-        "--goal", goal.c_str(),
-        "--min", min.c_str(),
-        "--max", max.c_str(),
-        nullptr
-    };
+    std::ostringstream args;
+    for (auto& arg : prob.args()) {
+        argv.push_back(arg.c_str());
+        args << ' ' << argv.back();
+    }
+    argv.push_back(nullptr); // <-- required terminator
     
     char file[20];
     snprintf(file, sizeof(file), "lambda-%04d.out", lambdaId);
     
     // JI_LOG(TRACE) << "RUNNING Lambda: " <<
     //     "./mpl_lambda"
-    std::ostringstream args;
-    for (int i=0 ; argv[i] ; ++i)
-        args << ' ' << argv[i];
+
+    // for (int i=0 ; argv[i] ; ++i)
+    //     args << ' ' << argv[i];
     JI_LOG(TRACE) << "Running lambda:" << args.str();
     
     int fd = ::open(file, O_RDWR | O_CREAT | O_TRUNC, S_IRUSR | S_IWUSR);
@@ -325,7 +301,7 @@ std::pair<int, int> mpl::launchLambda(std::uint64_t pId, packet::ProblemSE3<S>& 
     dup2(fd, 2); // make stderr write to file
     close(fd); // close fd, dups remain open
     
-    execv(path.c_str(), const_cast<char*const*>(argv));
+    execv(path.c_str(), const_cast<char*const*>(argv.data()));
     
     // if exec returns, then there was a problem
     throw std::system_error(errno, std::system_category(), "exec");
@@ -374,8 +350,7 @@ void mpl::Coordinator::broadcast(T&& packet, Group* group, Connection* conn) {
             c->write(packet);
 }
 
-template <class S>
-void mpl::Coordinator::launchLambdas(ID groupId, packet::ProblemSE3<S>&& prob, int nLambdas) {
+void mpl::Coordinator::launchLambdas(ID groupId, packet::Problem&& prob, int nLambdas) {
     for (int i=0 ; i<nLambdas ; ++i)
         childProcesses_.emplace_back(launchLambda(groupId, prob));
 }

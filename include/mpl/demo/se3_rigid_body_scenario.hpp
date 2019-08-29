@@ -65,6 +65,8 @@ namespace mpl::demo {
             // JI_LOG(INFO) << "loaded env: " << environment_->num_vertices << " vertices, " << environment_->num_tris << " tris";
             // JI_LOG(INFO) << "loaded robot: " << robot_->num_vertices << " vertices, " << robot_->num_tris << " tris";
 
+            JI_LOG(INFO) << "check resolution = " << 1/invStepSize_;
+            
             // auto robotTest = MeshLoad<Mesh>::load(robotMesh, true);
             
             // fcl::CollisionRequest<S> req;

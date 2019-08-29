@@ -213,7 +213,7 @@ namespace mpl::demo {
         }
 
         double checkResolution(double defaultIfZero) const {
-            return checkResolution_ < 0 ? defaultIfZero : checkResolution_;
+            return checkResolution_ <= 0 ? defaultIfZero : checkResolution_;
         }
     };
 }

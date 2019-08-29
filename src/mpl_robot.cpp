@@ -87,40 +87,18 @@ namespace mpl {
             JI_LOG(WARN) << "unexpected packet type: " << T::name();
         }
 
-        template <class S>
-        void process(packet::PathSE3<S>&& pkt) {
+        template <class State>
+        void process(packet::Path<State>&& pkt) {
             JI_LOG(INFO) << "Recieved path cost = " << pkt.cost();
             for (auto& q : pkt.path())
                 JI_LOG(INFO) << "  " << q;
         }
 
     public:
-        template <class S>
-        void sendProblemSE3(
-            const std::string& env,
-            const std::string& robot,
-            const std::tuple<Eigen::Quaternion<S>, Eigen::Matrix<S, 3, 1>>& start,
-            const std::tuple<Eigen::Quaternion<S>, Eigen::Matrix<S, 3, 1>>& goal,
-            const Eigen::Matrix<S, 3, 1>& min,
-            const Eigen::Matrix<S, 3, 1>& max,
-            const std::string& algorithm,
-            double timeLimit,
-            double discretization)
-        {
-            std::uint32_t alg;
-                
-            if ("rrt" == algorithm)
-                alg = packet::ALGORITHM_RRT;
-            else if ("cforest" == algorithm)
-                alg = packet::ALGORITHM_CFOREST;
-            else
-                throw std::invalid_argument("unknown algorithm: " + algorithm);
-
-            std::uint32_t timeLimitMillis = static_cast<std::uint32_t>(timeLimit * 1e3);
-            
-            writeQueue_.push_back(packet::ProblemSE3<S>(env, robot, start, goal, min, max, alg, timeLimitMillis, discretization));
+        void sendProblem(int argc, char *argv[]) {
+            writeQueue_.push_back(packet::Problem(argc, argv));
         }
-        
+
         void loop() {
             while (socket_ != -1) {
                 struct pollfd pfd;
@@ -147,24 +125,29 @@ int main(int argc, char *argv[]) try {
     using Scenario = mpl::demo::SE3RigidBodyScenario<S>;
     using State = typename Scenario::State;
     using Bound = typename Scenario::Bound;
-    mpl::demo::AppOptions options(argc, argv);
+    // mpl::demo::AppOptions options(argc, argv);
 
-    if (options.coordinator().empty())
+    static const char opt[] = "--coordinator";
+
+    std::string coordinator;
+    
+    for (int i=1 ; i<argc ; ++i) {
+        char *arg = argv[i];
+        if (std::strncmp(opt, arg, sizeof(opt)-1) == 0) {
+            if (arg[sizeof(opt)-1] == '=')
+                coordinator = arg+sizeof(opt);
+            else if (arg[sizeof(opt)-1] == '\0' && i+1<argc)
+                coordinator = argv[++i];
+        }
+    }
+
+    if (coordinator.empty())
         throw std::invalid_argument("--coordinator is required");
     
     mpl::RobotClient robot;
     
-    robot.connect(options.coordinator());
-    robot.sendProblemSE3(
-        options.env(),
-        options.robot(),
-        options.start<State>(),
-        options.goal<State>(),
-        options.min<Bound>(),
-        options.max<Bound>(),
-        options.algorithm(),
-        options.timeLimit(),
-        options.checkResolution(0));
+    robot.connect(coordinator);
+    robot.sendProblem(argc, argv);
     robot.loop();
 
     return EXIT_SUCCESS;
