@@ -9,6 +9,8 @@
 #include <list>
 #include <map>
 #include <sys/socket.h>
+#include <sys/types.h>
+#include <sys/wait.h>
 #include <system_error>
 #include <unistd.h>
 #include <fcntl.h>
