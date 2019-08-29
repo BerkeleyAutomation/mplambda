@@ -1,6 +1,6 @@
 # 3.10 introduces C++ 17 support
 cmake_minimum_required (VERSION 3.10)
-project (ur5)
+project (mplambda)
 
 # Enable C++17
 set(CMAKE_CXX_STANDARD 17)
@@ -21,6 +21,7 @@ else()
 endif()
 #########
 
+find_package(aws-lambda-runtime REQUIRED)
 find_package(OpenMP REQUIRED)
 find_package(Assimp REQUIRED)
 find_package(Threads)
@@ -36,7 +37,7 @@ link_directories(${FCL_LIBRARY_DIRS} ${ASSIMP_LIBRARY_DIRS})
 include_directories(include ../nigh/src ${FCL_INCLUDE_DIRS} ${ASSIMP_INCLUDE_DIRS})
 
 add_executable(mpl_lambda src/mpl_lambda.cpp src/mpl/comm.cpp src/mpl/write_queue.cpp src/mpl/demo/app_options.cpp)
-target_link_libraries(mpl_lambda Eigen3::Eigen Threads::Threads ${ASSIMP_LIBRARIES} ${FCL_LIBRARIES} ${CCD_LIBRARIES})
+target_link_libraries(mpl_lambda Eigen3::Eigen Threads::Threads ${ASSIMP_LIBRARIES} ${FCL_LIBRARIES} ${CCD_LIBRARIES} AWS::aws-lambda-runtime)
 
 add_executable(mpl_coordinator src/mpl_coordinator.cpp src/mpl/write_queue.cpp)
 # target_link_libraries(mpl_coordinator Threads::Threads)
@@ -44,3 +45,8 @@ add_executable(mpl_coordinator src/mpl_coordinator.cpp src/mpl/write_queue.cpp)
 add_executable(mpl_robot src/mpl_robot.cpp src/mpl/write_queue.cpp src/mpl/demo/app_options.cpp)
 
 target_link_libraries(mpl_robot Eigen3::Eigen Threads::Threads ${ASSIMP_LIBRARIES} ${FCL_LIBRARIES} ${CCD_LIBRARIES})
+
+#add_executable(${PROJECT_NAME} "main.cpp")
+#target_link_libraries(${PROJECT_NAME} PUBLIC AWS::aws-lambda-runtime)
+#aws_lambda_package_target(${PROJECT_NAME})
+aws_lambda_package_target(mpl_lambda)
