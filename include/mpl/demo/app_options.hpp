@@ -58,6 +58,45 @@ namespace mpl::demo {
         }
     };
 
+    template <class S, int mode>
+    struct OptionParser<Eigen::Transform<S, 3, mode>> {
+        using Result = Eigen::Transform<S, 3, mode>;
+        static Result parse(const std::string& name, const char *arg, char **endp) {
+            if (!*arg)
+                throw std::invalid_argument("expected comma");
+            std::vector<S> q;
+            q.push_back(OptionParser<S>::parse(name, arg, endp));
+            while (**endp) {
+                if (**endp != ',')
+                    throw std::invalid_argument("expected comma");
+                q.push_back(OptionParser<S>::parse(name, arg, endp));
+            }
+
+            if (q.size() == 3) {
+                Result t;
+                t.setIdentity();
+                Eigen::AngleAxis<S> aa(q[2], Eigen::Matrix<S, 3, 1>::UnitZ());
+                t.linear() = aa.toRotationMatrix();
+                t.translation() << q[0], q[1], 0;
+                return t;
+            } else if (q.size() == 6) {
+                Eigen::Matrix<S, 3, 1> axis;
+                Result t;
+                t.setIdentity();
+                axis << q[3], q[4], q[5];
+                S angle = axis.norm();
+                if (std::abs(angle) > 1e-6) {
+                    Eigen::AngleAxis<S> aa(angle, axis / angle);
+                    t.linear() = aa.toRotationMatrix();
+                }
+                t.translation() << q[0], q[1], q[2];
+                return t;
+            } else {
+                throw std::invalid_argument(name + " only supports 3 or 6 arguments");
+            }
+        }
+    };
+
     template <class T>
     struct OptionParser<std::optional<T>> {
         static std::optional<T> parse(const std::string& name, const char *arg, char **endp) {
@@ -76,6 +115,7 @@ namespace mpl::demo {
 
         std::string env_;
         std::string robot_;
+        std::string envFrame_;
 
         std::string start_;
         std::string goal_;
@@ -128,6 +168,11 @@ namespace mpl::demo {
             if (required && env_.empty())
                 throw std::invalid_argument("--env is required");
             return env_;
+        }
+
+        template <class T>
+        T envFrame() const {
+            return parse<T>("env-frame", envFrame_);
         }
         
         const std::string& robot(bool required = true) const {

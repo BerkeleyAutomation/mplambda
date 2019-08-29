@@ -27,7 +27,7 @@ namespace mpl::demo {
         Space space_;
         
         Mesh environment_;
-        Frame envFrame_{Frame::Identity()};
+        Frame envFrame_;
 
         Frame goal_;
 
@@ -41,10 +41,12 @@ namespace mpl::demo {
 
     public:
         FetchScenario(
+            const Frame& envFrame,
             const std::string& envMesh,
             const Frame& goal,
             S checkResolution = 0.01)
             : environment_(MeshLoad<Mesh>::load(envMesh, false))
+            , envFrame_{envFrame}
             , goal_(goal)
             , invStepSize_(1 / checkResolution)
         {

@@ -171,9 +171,10 @@ namespace mpl::demo {
             using Scenario = mpl::demo::FetchScenario<S>;
             using State = typename Scenario::State;
             using Frame = typename Scenario::Frame;
-            Frame goal; // TODO: get from options
+            Frame envFrame = options.envFrame<Frame>();
+            Frame goal = options.goal<Frame>();
             runPlanner<Scenario, Algorithm>(
-                options, options.env(), goal,
+                options, envFrame, options.env(), goal,
                 options.checkResolution(0.1));
         } else {
             throw std::invalid_argument("bad scenario: " + options.scenario());
@@ -182,11 +183,14 @@ namespace mpl::demo {
 
     template <class Algorithm>
     void runSelectPrecision(const demo::AppOptions& options) {
-        if (options.singlePrecision()) {
-            runSelectScenario<Algorithm, float>(options);
-        } else {
-            runSelectScenario<Algorithm, double>(options);
-        }
+        // TODO: revert this.  For now keeping it out the float branch
+        // should double the compilation speed.
+        
+        // if (options.singlePrecision()) {
+        //     runSelectScenario<Algorithm, float>(options);
+        // } else {
+        runSelectScenario<Algorithm, double>(options);
+        // }
     }
 
     void runSelectPlanner(const demo::AppOptions& options) {

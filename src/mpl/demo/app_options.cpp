@@ -35,6 +35,7 @@ Options:
   -I, --problem-id=ID
   -t, --time-limit=TIME
   -e, --env=MESH
+  -E, --env-frame=X,Y,theta
   -r, --robot=MESH
   -s, --start=W,I,J,K,X,Y,Z
   -g, --goal=W,I,J,K,X,Y,Z
@@ -65,7 +66,7 @@ mpl::demo::AppOptions::AppOptions(int argc, char *argv[]) {
         { NULL, 0, NULL, 0 }
     };
 
-    for (int ch ; (ch = getopt_long(argc, argv, "S:a:e:r:g:s:m:M:c:I:t:d:f", longopts, NULL)) != -1 ; ) {
+    for (int ch ; (ch = getopt_long(argc, argv, "S:a:e:E:r:g:s:m:M:c:I:t:d:f", longopts, NULL)) != -1 ; ) {
         char *endp;
                 
         switch (ch) {
@@ -77,6 +78,9 @@ mpl::demo::AppOptions::AppOptions(int argc, char *argv[]) {
             break;
         case 'e':
             env_ = optarg;
+            break;
+        case 'E':
+            envFrame_ = optarg;
             break;
         case 'r':
             robot_ = optarg;
