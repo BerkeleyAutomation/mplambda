@@ -2,11 +2,7 @@
 #ifndef MPL_DEMO_SE3_RIGID_BODY_PLANNING_HPP
 #define MPL_DEMO_SE3_RIGID_BODY_PLANNING_HPP
 
-<<<<<<< HEAD
-#include<atomic>
-=======
 #include "load_mesh.hpp"
->>>>>>> 41f82c4890dfc4c90cc03e96dfa7518bd0178536
 #include "../interpolate.hpp"
 #include "../randomize.hpp"
 #include <jilog.hpp>
