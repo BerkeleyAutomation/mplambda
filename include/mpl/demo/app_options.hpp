@@ -108,6 +108,7 @@ namespace mpl::demo {
     };
     
     class AppOptions {
+    public:
         std::string scenario_;
         std::string algorithm_;
         std::string coordinator_;
@@ -128,6 +129,7 @@ namespace mpl::demo {
 
         bool singlePrecision_{false};
 
+    private:
         static void usage(const char *argv0);
 
         template <class T>
@@ -140,6 +142,7 @@ namespace mpl::demo {
         }
         
     public:
+        inline AppOptions() {}
         AppOptions(int argc, char* argv[]);
 
         const std::string& scenario(bool required = true) const {

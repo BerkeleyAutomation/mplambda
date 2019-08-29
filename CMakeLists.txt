@@ -21,7 +21,11 @@ else()
 endif()
 #########
 
-find_package(aws-lambda-runtime REQUIRED)
+if (${APPLE})
+else ()
+    find_package(aws-lambda-runtime REQUIRED)
+endif()
+
 find_package(OpenMP REQUIRED)
 find_package(Assimp REQUIRED)
 find_package(Threads)
@@ -36,8 +40,15 @@ endif()
 link_directories(${FCL_LIBRARY_DIRS} ${ASSIMP_LIBRARY_DIRS})
 include_directories(include ../nigh/src ${FCL_INCLUDE_DIRS} ${ASSIMP_INCLUDE_DIRS})
 
-add_executable(mpl_lambda src/mpl_lambda.cpp src/mpl/comm.cpp src/mpl/write_queue.cpp src/mpl/demo/app_options.cpp)
-target_link_libraries(mpl_lambda Eigen3::Eigen Threads::Threads ${ASSIMP_LIBRARIES} ${FCL_LIBRARIES} ${CCD_LIBRARIES} AWS::aws-lambda-runtime)
+if (${APPLE})
+else ()
+    add_executable(mpl_lambda_aws src/mpl_lambda_aws.cpp src/mpl/demo/lambda_common.cpp src/mpl/comm.cpp src/mpl/write_queue.cpp src/mpl/demo/app_options.cpp)
+  target_link_libraries(mpl_lambda_aws Eigen3::Eigen Threads::Threads ${ASSIMP_LIBRARIES} ${FCL_LIBRARIES} ${CCD_LIBRARIES} AWS::aws-lambda-runtime)
+    aws_lambda_package_target(mpl_lambda_aws)
+endif()
+
+add_executable(mpl_lambda_pseudo src/mpl_lambda_pseudo.cpp src/mpl/demo/lambda_common.cpp src/mpl/comm.cpp src/mpl/write_queue.cpp src/mpl/demo/app_options.cpp)
+target_link_libraries(mpl_lambda_pseudo Eigen3::Eigen Threads::Threads ${ASSIMP_LIBRARIES} ${FCL_LIBRARIES} ${CCD_LIBRARIES})
 
 add_executable(mpl_coordinator src/mpl_coordinator.cpp src/mpl/write_queue.cpp)
 # target_link_libraries(mpl_coordinator Threads::Threads)
@@ -49,4 +60,3 @@ target_link_libraries(mpl_robot Eigen3::Eigen Threads::Threads ${ASSIMP_LIBRARIE
 #add_executable(${PROJECT_NAME} "main.cpp")
 #target_link_libraries(${PROJECT_NAME} PUBLIC AWS::aws-lambda-runtime)
 #aws_lambda_package_target(${PROJECT_NAME})
-aws_lambda_package_target(mpl_lambda)
