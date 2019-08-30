@@ -646,7 +646,6 @@ namespace mpl::demo {
 
         template <class Char, class Traits>
         void updateArticulatedBlenderScript(BlenderPy<Char, Traits> bpy) const {
-            // TODO: torso!
             bpy << "torso_lift.location = (-0.086875, 0, " << (0.37743 + config_[kTorsoLiftJoint]) << ")";
             bpy << "shoulder_pan.rotation_axis_angle = (" << config_[kShoulderPanJoint] << ",0,0,1)";
             bpy << "shoulder_lift.rotation_axis_angle = (" << config_[kShoulderLiftJoint] << ",0,1,0)";
