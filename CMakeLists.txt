@@ -54,8 +54,10 @@ add_executable(mpl_coordinator src/mpl_coordinator.cpp src/mpl/write_queue.cpp)
 # target_link_libraries(mpl_coordinator Threads::Threads)
 
 add_executable(mpl_robot src/mpl_robot.cpp src/mpl/write_queue.cpp src/mpl/demo/app_options.cpp)
-
 target_link_libraries(mpl_robot Eigen3::Eigen Threads::Threads ${ASSIMP_LIBRARIES} ${FCL_LIBRARIES} ${CCD_LIBRARIES})
+
+add_executable(mpl_fetch src/mpl_fetch.cpp src/mpl/write_queue.cpp src/mpl/demo/app_options.cpp)
+target_link_libraries(mpl_fetch Eigen3::Eigen Threads::Threads ${ASSIMP_LIBRARIES} ${FCL_LIBRARIES} ${CCD_LIBRARIES})
 
 #add_executable(${PROJECT_NAME} "main.cpp")
 #target_link_libraries(${PROJECT_NAME} PUBLIC AWS::aws-lambda-runtime)

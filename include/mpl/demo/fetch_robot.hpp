@@ -3,7 +3,9 @@
 #define MPL_FEMO_FETCH_ROBOT_HPP
 
 #include "twist.hpp"
+#include "blender_py.hpp"
 #include <Eigen/Dense>
+#include <random>
 #include <fcl/narrowphase/collision.h>
 
 namespace mpl::demo {
@@ -47,6 +49,23 @@ namespace mpl::demo {
         fcl::Box<S> gripper_{0.12 + 0.0625 * 2, 0.125, 0.075};
         fcl::Capsule<S> neck_{0.085 * 1.1, 0.04 * 1.1};
         fcl::Cylinder<S> head_{0.24 * 1.05, 0.115 * 1.05};
+    };
+
+    template <class S>
+    struct BPYLink {
+        std::string parent_;
+        std::string name_;
+        Eigen::Matrix<S, 3, 1> location_;
+
+        BPYLink(const std::string& parent, const std::string& name, S x, S y, S z)
+            : parent_(parent), name_(name), location_(x, y, z)
+        {
+        }
+
+        template <class Char, class Traits>
+        friend decltype(auto) operator << (std::basic_ostream<Char, Traits>& out, const BPYLink& link) {
+            return out << link.name_;
+        }
     };
     
     template <class S>
@@ -144,8 +163,8 @@ namespace mpl::demo {
             // sample unbounded joints in the range -PI to +PI.  Note:
             // torso_lift is included in this cwise min/max, but to no
             // effect since its bounds are less than +/- 3.14 meters.
-            static Config min = jointMax().cwiseMin(-PI);
-            static Config max = jointMin().cwiseMax(+PI);
+            static Config min = jointMin().cwiseMax(-PI);
+            static Config max = jointMax().cwiseMin(+PI);
             Config q;
             for (int i=0 ; i < kDOF ; ++i) {
                 std::uniform_real_distribution<S> dist(min[i], max[i]);
@@ -574,6 +593,75 @@ namespace mpl::demo {
                 return true;
 
             return false;
+        }
+
+        template <class Char, class Traits>
+        void toArticulatedBlenderScript(BlenderPy<Char, Traits> bpy, const std::string& meshPath) const {
+            // TODO: these transforms are COPIED! from fk().  The should be SHARED with fk().
+            static const std::vector<BPYLink<S>> links{{
+                { "", "base", 0, 0, 0 },
+                { "base", "torso_lift", -0.086875, 0, 0.37743 },
+                { "torso_lift", "shoulder_pan", 0.119525, 0, 0.34858 },
+                { "shoulder_pan", "shoulder_lift", 0.117, 0, 0.0599999999999999 },
+                { "shoulder_lift", "upperarm_roll", 0.219, 0, 0 },
+                { "upperarm_roll", "elbow_flex", 0.133, 0, 0 },
+                { "elbow_flex", "forearm_roll", 0.197, 0, 0 },
+                { "forearm_roll", "wrist_flex", 0.1245, 0, 0 },
+                { "wrist_flex", "wrist_roll", 0.1385, 0, 0 },
+                { "wrist_roll", "gripper", 0.16645, 0, 0 },
+                { "torso_lift", "head_pan", 0.053125, 0, 0.603001417713939 },
+                { "head_pan", "head_tilt", 0.14253, 0, 0.057999 },
+                { "gripper", "l_gripper_finger", 0, -0.101425, 0 }, // 0, -0.015425, 0 },
+                { "gripper", "r_gripper_finger", 0,  0.101425, 0 }, // 0,  0.015425, 0 },
+            }};
+
+            Eigen::IOFormat fmt{Eigen::FullPrecision, Eigen::DontAlignCols, ", ", ", ", "", "", "(", ")"};
+
+            for (auto& link : links) {
+                bpy << link << " = bpy.data.objects.new(\"" << link << "\", None)";
+                bpy << link << ".rotation_mode = 'AXIS_ANGLE'";
+                bpy << "bpy.context.collection.objects.link(" << link << ")";
+                if ("gripper" == link.parent_) // the two fingers are in STL
+                    bpy << "bpy.ops.import_mesh.stl(filepath=\"" << meshPath << link << "_link.STL\")";
+                else
+                    bpy << "bpy.ops.wm.collada_import(filepath=\"" << meshPath << link << "_link.dae\")";
+                bpy << "for obj in bpy.context.selected_objects:";
+                auto loop = bpy.indented();
+                loop << "obj.constraints.new(type='CHILD_OF')";
+                loop << "obj.constraints['Child Of'].target = " << link;
+
+                if (!link.parent_.empty()) {
+                    bpy << link << ".constraints.new(type='CHILD_OF')";
+                    bpy << link << ".constraints['Child Of'].target = " << link.parent_;
+                }
+
+                bpy << link << ".location = " << link.location_.format(fmt);
+            }
+
+            bpy << "robot = [ \\";
+            for (auto& link : links)
+                bpy << "    " << link << ", \\";
+            bpy << "]";
+        }
+
+        template <class Char, class Traits>
+        void updateArticulatedBlenderScript(BlenderPy<Char, Traits> bpy) const {
+            // TODO: torso!
+            bpy << "torso_lift.location = (-0.086875, 0, " << (0.37743 + config_[kTorsoLiftJoint]) << ")";
+            bpy << "shoulder_pan.rotation_axis_angle = (" << config_[kShoulderPanJoint] << ",0,0,1)";
+            bpy << "shoulder_lift.rotation_axis_angle = (" << config_[kShoulderLiftJoint] << ",0,1,0)";
+            bpy << "upperarm_roll.rotation_axis_angle = (" << config_[kUpperarmRollJoint] << ",1,0,0)";
+            bpy << "elbow_flex.rotation_axis_angle = (" << config_[kElbowFlexJoint] << ",0,1,0)";
+            bpy << "forearm_roll.rotation_axis_angle = (" << config_[kForearmRollJoint] << ",1,0,0)";
+            bpy << "wrist_flex.rotation_axis_angle = (" << config_[kWristFlexJoint] << ",0,1,0)";
+            bpy << "wrist_roll.rotation_axis_angle = (" << config_[kWristRollJoint] << ",1,0,0)";
+        }
+
+        template <class Char, class Traits>
+        void keyframeInsert(BlenderPy<Char, Traits> bpy, int frame) const {
+            bpy << "torso_lift.keyframe_insert(data_path='location', frame=" << frame << ")";
+            bpy << "for obj in robot[2:9]:";
+            bpy << "    obj.keyframe_insert(data_path='rotation_axis_angle', frame=" << frame << ")";
         }
     };
 }
