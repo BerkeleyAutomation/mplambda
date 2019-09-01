@@ -173,6 +173,22 @@ namespace mpl::demo {
             return q;
         }
 
+        static const Config& restConfig() {
+            static const S deg90 = 3.14159265358979323846264338327950288419716939937510582097494459230781640628620L /2;
+            static Config q =
+                (Config() <<
+                 0.1,
+                 deg90, // shoulder pan
+                 deg90, // shoulder lift
+                 0,  // upperarm roll
+                 deg90, // elbow flex
+                 0,  // forearm roll
+                 deg90, // wrist flex
+                 0   // wrist roll
+                ).finished();
+            return q;
+        }
+
     private:
         Config config_;
 
