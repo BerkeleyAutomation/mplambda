@@ -90,7 +90,7 @@ namespace mpl::demo {
         }
 
         template <class RNG>
-        const State& sampleGoal(RNG& rng) {
+        std::optional<State> sampleGoal(RNG& rng) {
             return goal_;
         }
 

@@ -106,6 +106,13 @@ namespace jilog_impl {
             return *this;
         }
 
+        template <class S, int d, int m, int o>
+        LogStream& operator << (const Eigen::Transform<S,d,m,o>& t) {
+            Eigen::IOFormat fmt(Eigen::StreamPrecision, 0, " ", "\n\t", "", "", "", "");
+            msg_ << "\n\t" << t.matrix().format(fmt);
+            return *this;
+        }
+
         template <class D>
         LogStream& operator << (const Eigen::QuaternionBase<D>& q) {
             Eigen::IOFormat fmt(Eigen::FullPrecision, Eigen::DontAlignCols, " ", " ", "", "", "", "");

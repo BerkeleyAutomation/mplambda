@@ -66,10 +66,10 @@ namespace mpl::demo {
                 throw std::invalid_argument("expected comma");
             std::vector<S> q;
             q.push_back(OptionParser<S>::parse(name, arg, endp));
-            while (**endp) {
-                if (**endp != ',')
+            while (*(arg = *endp) != '\0') {
+                if (*arg != ',')
                     throw std::invalid_argument("expected comma");
-                q.push_back(OptionParser<S>::parse(name, arg, endp));
+                q.push_back(OptionParser<S>::parse(name, arg+1, endp));
             }
 
             if (q.size() == 3) {

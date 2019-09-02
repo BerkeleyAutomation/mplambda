@@ -55,7 +55,7 @@ mpl::demo::AppOptions::AppOptions(int argc, char *argv[]) {
         { "env-frame", required_argument, NULL, 'E' },
         { "robot", required_argument, NULL, 'r' },
         { "goal", required_argument, NULL, 'g' },
-        { "goal-radis", required_argument, NULL, 'G' },
+        { "goal-radius", required_argument, NULL, 'G' },
         { "start", required_argument, NULL, 's' },
         { "min", required_argument, NULL, 'm' },
         { "max", required_argument, NULL, 'M' },
@@ -126,7 +126,7 @@ mpl::demo::AppOptions::AppOptions(int argc, char *argv[]) {
             break;
         default:
             usage(argv[0]);
-            throw std::invalid_argument("unknown option");
+            throw std::invalid_argument("see above");
         }            
     }
     

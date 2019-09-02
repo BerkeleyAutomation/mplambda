@@ -44,11 +44,13 @@ namespace mpl::demo {
             S checkResolution = 0.01)
             : environment_(MeshLoad<Mesh>::load(envMesh, false))
             , envFrame_{envFrame}
-            , goal_(goal)
+            , goal_{goal}
             , invStepSize_(1 / checkResolution)
         {
             goalEps_ = goalTol.minCoeff();
             goalL_ = goalEps_ / goalTol.array();
+
+            JI_LOG(INFO) << "goal tolerance: eps=" << goalEps_ << ", L=" << goalL_;
         }
 
         const Space& space() const {
@@ -62,10 +64,12 @@ namespace mpl::demo {
 
         // this isn't always a goal-biased sample
         template <class RNG>
-        State sampleGoal(RNG& rng) {
+        std::optional<State> sampleGoal(RNG& rng) {
             State q = randomSample(rng);
             Robot robot(q);
-            return (robot.ik(goal_, goalL_, goalEps_, 50)) ? robot.config() : q;
+            if (!robot.ik(goal_, goalL_, goalEps_, 50))
+                return {};
+            return robot.config();
         }
 
 

@@ -81,6 +81,9 @@ void mpl::Comm::sendPath(
     S cost,
     std::vector<std::tuple<Eigen::Quaternion<S>, Eigen::Matrix<S, 3, 1>>>&& path)
 {
+    if (socket_ == -1)
+        return;
+
     using State = std::tuple<Eigen::Quaternion<S>, Eigen::Matrix<S, 3, 1>>;
     writeQueue_.push_back(packet::Path<State>(cost, std::move(path)));
 }
@@ -90,6 +93,9 @@ void mpl::Comm::sendPath(
     S cost,
     std::vector<Eigen::Matrix<S, dim, 1>>&& path)
 {
+    if (socket_ == -1)
+        return;
+
     using State = Eigen::Matrix<S, dim, 1>;
     writeQueue_.push_back(packet::Path<State>(cost, std::move(path)));
 }

@@ -17,9 +17,11 @@ mpl::Comm::~Comm() {
 }
 
 void mpl::Comm::close() {
-    JI_LOG(TRACE) << "closing socket " << socket_;
-    if (::close(std::exchange(socket_, -1)) == -1)
-        JI_LOG(WARN) << "error closing socket: " << errno;
+    if (socket_ != -1) {
+        JI_LOG(TRACE) << "closing socket " << socket_;
+        if (::close(std::exchange(socket_, -1)) == -1)
+            JI_LOG(WARN) << "error closing socket: " << errno;
+    }
 }
 
 void mpl::Comm::connected() {
@@ -136,6 +138,9 @@ void mpl::Comm::handle(packet::Done&&) {
 }
 
 void mpl::Comm::sendDone() {
+    if (socket_ == -1)
+        return;
+    
     int nonBlocking = 0;
     if (::ioctl(socket_, FIONBIO, reinterpret_cast<char*>(&nonBlocking)) == -1)
         JI_LOG(INFO) << "set blocking failed (" << errno << ")";

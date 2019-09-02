@@ -65,15 +65,20 @@ namespace mpl::demo {
 
         Comm comm_;
 
-        if (!options.coordinator().empty()) {
+        if (options.coordinator(false).empty()) {
+            JI_LOG(WARN) << "no coordinator set";
+        } else {
             comm_.setProblemId(options.problemId());
             comm_.connect(options.coordinator());
         }
 
+        JI_LOG(INFO) << "setting up planner";
         Planner<Scenario, Algorithm> planner(std::forward<Args>(args)...);
 
+        JI_LOG(INFO) << "Adding start state: " << qStart;
         planner.addStart(qStart);
 
+        JI_LOG(INFO) << "Starting solve()";
         using Clock = std::chrono::steady_clock;
         Clock::duration maxElapsedSolveTime = std::chrono::duration_cast<Clock::duration>(
             std::chrono::duration<double>(options.timeLimit()));
@@ -144,6 +149,8 @@ namespace mpl::demo {
         
         JI_LOG(INFO) << "solution " << (planner.isSolved() ? "" : "not ") << "found after " << (Clock::now() - start);
         JI_LOG(INFO) << "graph size = " << planner.size();
+        JI_LOG(INFO) << "samples (goal-biased) = " << planner.samplesConsidered() << " ("
+                     << planner.goalBiasedSamples() << ")";
             
         auto finalSolution = planner.solution();
         if (finalSolution != solution) {
@@ -157,6 +164,7 @@ namespace mpl::demo {
 
     template <class Algorithm, class S>
     void runSelectScenario(const demo::AppOptions& options) {
+        JI_LOG(INFO) << "running scenario: " << options.scenario();
         if (options.scenario() == "se3") {
             using Scenario = mpl::demo::SE3RigidBodyScenario<S>;
             using Bound = typename Scenario::Bound;
@@ -175,6 +183,10 @@ namespace mpl::demo {
             Frame envFrame = options.envFrame<Frame>();
             Frame goal = options.goal<Frame>();
             GoalRadius goalRadius = options.goalRadius<GoalRadius>();
+            JI_LOG(INFO) << "Env frame: " << envFrame;
+            JI_LOG(INFO) << "Goal: " << goal;
+            goal = envFrame * goal;
+            JI_LOG(INFO) << "Goal in robot's frame: " << goal;
             runPlanner<Scenario, Algorithm>(
                 options, envFrame, options.env(), goal, goalRadius,
                 options.checkResolution(0.1));
@@ -191,11 +203,13 @@ namespace mpl::demo {
         // if (options.singlePrecision()) {
         //     runSelectScenario<Algorithm, float>(options);
         // } else {
+        JI_LOG(INFO) << "using precision: double";
         runSelectScenario<Algorithm, double>(options);
         // }
     }
 
     void runSelectPlanner(const demo::AppOptions& options) {
+        JI_LOG(INFO) << "using planner: " << options.algorithm();
         if (options.algorithm() == "rrt")
             runSelectPrecision<mpl::PRRT>(options);
         else if (options.algorithm() == "cforest")

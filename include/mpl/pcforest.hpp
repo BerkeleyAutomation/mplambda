@@ -54,27 +54,28 @@ namespace mpl {
         
         Node* start_;
         std::atomic<Edge*> solution_{nullptr};
+        std::atomic_int goalBiasedSamples_{0};
         std::vector<Thread> threads_;
 
         Distance kRRG_;
 
-        State randomSample(RNG& rng, Distance goalBias) {
-            static std::uniform_real_distribution<Distance> unif01;
+        // State randomSample(RNG& rng, Distance goalBias) {
+        //     static std::uniform_real_distribution<Distance> unif01;
 
-            Edge *s = solution_.load(std::memory_order_acquire);
+        //     Edge *s = solution_.load(std::memory_order_acquire);
 
-            if (s == nullptr)
-                return (goalBias > 0 && unif01(rng) < goalBias)
-                    ? scenario_.sampleGoal(rng)
-                    : scenario_.randomSample(rng);
+        //     if (s == nullptr)
+        //         return (goalBias > 0 && unif01(rng) < goalBias)
+        //             ? scenario_.sampleGoal(rng)
+        //             : scenario_.randomSample(rng);
                 
-            State q;
-            do {
-                q = scenario_.randomSample(rng);
-            } while (s->pathCost() < distance(start_->state(), q) + distance(q, s->node()->state()));
+        //     State q;
+        //     do {
+        //         q = scenario_.randomSample(rng);
+        //     } while (s->pathCost() < distance(start_->state(), q) + distance(q, s->node()->state()));
             
-            return q;
-        }
+        //     return q;
+        // }
         
         decltype(auto) nearest(const State& q) {
             return nn_.nearest(q);
@@ -187,6 +188,15 @@ namespace mpl {
 
         std::size_t size() const {
             return nn_.size();
+        }
+
+        int goalBiasedSamples() const {
+            return goalBiasedSamples_;
+        }
+
+        int samplesConsidered() const {
+            return std::accumulate(
+                threads_.begin(), threads_.end(), 0, [&] (int a, const auto& t) { return a + t.samples(); });
         }
 
         Solution solution() const {
@@ -404,12 +414,28 @@ namespace mpl {
         std::vector<ParentCandidate> parentHeap_;
 
         Distance goalBias_{0};
+        std::atomic_int samples_{0};
 
     public:
+        Thread(Thread&& other)
+            : rng_(std::move(other.rng_))
+            , nodes_(std::move(other.nodes_))
+            , edges_(std::move(other.edges_))
+            , nbh_(std::move(other.nbh_))
+            , parentHeap_(std::move(other.parentHeap_))
+            , goalBias_(other.goalBias_)
+            , samples_(other.samples_.load())
+        {
+        }
+        
         template <class SSeq>
         Thread(SSeq& sseq)
             : rng_(sseq)
         {
+        }
+
+        int samples() const {
+            return samples_;
         }
 
         void setGoalBias(Distance d) {
@@ -428,12 +454,13 @@ namespace mpl {
             return newNode;
         }
 
-        Node* addSample(Planner& planner, State qRand) {
+        Node* addSample(Planner& planner, State qRand, bool knownGoal) {
             auto [nNear, dNear] = planner.nearest(qRand).value();
 
             if (dNear > planner.maxDistance_) {
                 qRand = interpolate(nNear->state(), qRand, planner.maxDistance_ / dNear);
                 dNear = planner.distance(nNear->state(), qRand);
+                knownGoal = false; // we no longer know that this is a goal
             }
 
             if (dNear == 0 || dNear == planner.distance(qRand, qRand))
@@ -442,7 +469,7 @@ namespace mpl {
             if (!planner.isValid(nNear->state(), qRand))
                 return nullptr;
 
-            Node *newNode = &nodes_.emplace_back(planner.isGoal(qRand), qRand);
+            Node *newNode = &nodes_.emplace_back(knownGoal || planner.isGoal(qRand), qRand);
             addNodeNear(planner, newNode, nNear, dNear);
             return newNode;
         }
@@ -565,7 +592,8 @@ namespace mpl {
                 if (dNear > planner.distance(*it, *it)) {
                     // the state is not already in the graph, we have
                     // to add it.
-                    Node *newNode = &nodes_.emplace_back(planner.isGoal(*it), *it);
+                    bool isGoal = (it+1 == last); // the last element in the path is a goal
+                    Node *newNode = &nodes_.emplace_back(isGoal, *it);
                     addNodeNear(planner, newNode, prev, dPrev);
                     prev = newNode;
                 } else {
@@ -589,10 +617,32 @@ namespace mpl {
             }
         }
 
+        void addRandomSample(Planner& planner) {
+            static std::uniform_real_distribution<Distance> unif01;
+
+            ++samples_;
+            
+            Edge *s = planner.solution_.load(std::memory_order_acquire);
+
+            if (s == nullptr && goalBias_ > 0 && unif01(rng_) < goalBias_) {
+                if (auto q = planner.scenario_.sampleGoal(rng_)) {
+                    addSample(planner, *q, true);
+                    return;
+                }
+            }
+
+            State q;
+            do {
+                q = planner.scenario_.randomSample(rng_);
+            } while (s->pathCost() < planner.distance(planner.start_->state(), q) + planner.distance(q, s->node()->state()));
+
+            addSample(planner, q, false);
+        }
+
         template <class DoneFn>
         void solve(Planner& planner, DoneFn done) {
             while (!done())
-                addSample(planner, planner.randomSample(rng_, goalBias_));
+                addRandomSample(planner);
         }
     };
 }

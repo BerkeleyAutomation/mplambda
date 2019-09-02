@@ -46,6 +46,8 @@ namespace mpl {
         std::vector<Thread> threads_;
 
         std::atomic<Node*> solution_{nullptr};
+
+        std::atomic_int goalBiasedSamples_{0};
         
         decltype(auto) randomSample(RNG& rng) {
             return scenario_.randomSample(rng);
@@ -55,9 +57,9 @@ namespace mpl {
             return scenario_.sampleGoal(rng);
         }
 
-        void addNode(Node *n) {
+        void addNode(Node *n, bool knownGoal) {
             nn_.insert(n);
-            if (scenario_.isGoal(n->state()))
+            if (knownGoal || scenario_.isGoal(n->state()))
                 solution_.store(n, std::memory_order_release);
         }
 
@@ -104,11 +106,22 @@ namespace mpl {
         }
 
         void addStart(const State& q) {
+            if (!scenario_.isValid(q))
+                throw std::invalid_argument("start state is not valid");
             threads_[0].addStart(*this, q);
         }
 
         std::size_t size() const {
             return nn_.size();
+        }
+
+        int goalBiasedSamples() const {
+            return goalBiasedSamples_;
+        }
+
+        int samplesConsidered() const {
+            return std::accumulate(
+                threads_.begin(), threads_.end(), 0, [&] (int a, const auto& t) { return a + t.samples(); });
         }
 
         Solution solution() const {
@@ -224,11 +237,25 @@ namespace mpl {
 
         Distance goalBias_{0};
 
+        std::atomic_int samples_{0};
+        
     public:
+        Thread(Thread&& other)
+            : rng_(std::move(other.rng_))
+            , nodes_(std::move(other.nodes_))
+            , goalBias_(other.goalBias_)
+            , samples_(other.samples_.load())
+        {
+        }
+        
         template <class SSeq>
         Thread(SSeq& sseq)
             : rng_(sseq)
         {
+        }
+
+        int samples() const {
+            return samples_;
         }
 
         void setGoalBias(Distance d) {
@@ -237,17 +264,19 @@ namespace mpl {
         }
 
         void addStart(Planner& planner, const State& q) {
-            planner.addNode(&nodes_.emplace_back(nullptr, q));
+            planner.addNode(&nodes_.emplace_back(nullptr, q), false);
         }
         
-        void addSample(Planner& planner, State qRand) {
+        void addSample(Planner& planner, State qRand, bool knownGoal) {
             auto [nNear, d] = planner.nearest(qRand).value();
 
             if (d == 0)
                 return;
 
-            if (d > planner.maxDistance_)
+            if (d > planner.maxDistance_) {
                 qRand = interpolate(nNear->state(), qRand, planner.maxDistance_ / d);
+                knownGoal = false;
+            }
 
             if (!planner.isValid(qRand))
                 return;
@@ -256,20 +285,29 @@ namespace mpl {
                 return;
 
             Node *nNew = &nodes_.emplace_back(nNear, qRand);
-            planner.addNode(nNew);
+            planner.addNode(nNew, knownGoal);
         }
 
-        State randomSample(Planner& planner) {
+        void addRandomSample(Planner& planner) {
             static std::uniform_real_distribution<Distance> unif01;
-            return (goalBias_ > 0 && unif01(rng_) < goalBias_)
-                ? planner.sampleGoal(rng_)
-                : planner.randomSample(rng_);
+
+            ++samples_;
+            
+            if (goalBias_ > 0 && unif01(rng_) < goalBias_) {
+                if (auto q = planner.sampleGoal(rng_)) {
+                    ++planner.goalBiasedSamples_;
+                    addSample(planner, *q, true);
+                    return;
+                }
+            }
+
+            addSample(planner, planner.randomSample(rng_), false);
         }
 
         template <class Done>
         void solve(Planner& planner, Done done) {
             while (!done())
-                addSample(planner, randomSample(planner));
+                addRandomSample(planner);
         }
     };
 }

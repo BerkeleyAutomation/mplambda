@@ -278,8 +278,10 @@ std::pair<int, int> mpl::launchLambda(std::uint64_t pId, packet::Problem& prob) 
     // need to add the group identifier
     argv.push_back("-I");
     argv.push_back(groupId.c_str());
-    
+
     std::ostringstream args;
+    args << path << " -I " << groupId;
+    
     for (auto& arg : prob.args()) {
         argv.push_back(arg.c_str());
         args << ' ' << argv.back();
