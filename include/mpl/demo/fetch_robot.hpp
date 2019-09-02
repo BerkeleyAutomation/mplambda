@@ -211,6 +211,7 @@ namespace mpl::demo {
         Frame wristRollJointOrigin_;
         Frame wristRollLink_;
         Frame gripperAxis_;
+        Frame gripperLink_;
 
         Frame tfBaseLink() const {
             const static Origin<Scalar> originBaseLink{0, 0, 0.1975, 0, 0, 0};
@@ -257,9 +258,8 @@ namespace mpl::demo {
             return wristRollLink_ * originWristRollLink;
         }
 
-        Frame tfGripperLink() const {
-            const static Origin<Scalar> originGripperLink{-0.09, 0, 0.0025, 0, 0, 0};
-            return gripperAxis_ * originGripperLink;
+        const Frame& tfGripperLink() const {
+            return gripperLink_;
         }
 
         Frame tfNeckLink() const {
@@ -301,7 +301,7 @@ namespace mpl::demo {
             wristRollLink_ = wristRollJointOrigin_ * R(config_[kWristRollJoint], Vec3::UnitX());
 
             gripperAxis_ = wristRollLink_ * T(0.16645, 0, 0);
-
+            gripperLink_ = gripperAxis_ * T(-0.09, 0, 0.0025);
 
             // headPanJointOrigin_ = torsoLiftLink_ * T(0.053125, 0, 0.603001417713939);
             // headPanLink_ = headPanJointOrigin_ * R(config_[kHeadPanJoint], Vec3::UnitZ());
@@ -353,12 +353,16 @@ namespace mpl::demo {
         const Frame& wristRollLink() const { return wristRollLink_; }
         const Frame& gripperAxis() const { return gripperAxis_; }
 
+        const Frame& getEndEffectorFrame() const {
+            return gripperLink_;
+        }
+
         Jacobian jacobian() const {
             using Twist = mpl::demo::Twist<S>;
 
             // it might make sense to make `end` be a parameter or
             // modified by a parameter.
-            const Frame& end = gripperAxis_;
+            const Frame& end = getEndEffectorFrame();
             
             Jacobian J;
             
@@ -402,24 +406,28 @@ namespace mpl::demo {
         bool ik(
             const Frame& target,
             const Eigen::Matrix<S, 6, 1>& L,
-            S eps = 1e-5,
+            S eps = 1e-3,
             unsigned maxIters = 500,
             S epsJoints = std::numeric_limits<S>::epsilon()*4)
         {
+            static constexpr bool debug = false;
+            
             using Twist = mpl::demo::Twist<S>;
             using Delta = Eigen::Matrix<S, 6, 1>;
             const S epsSqr = eps*eps;
             Config q = config_;
 
-            Delta deltaPos = L.asDiagonal() * Twist::diff(gripperAxis_, target).matrix();
+            Delta deltaPos = L.asDiagonal() * Twist::diff(getEndEffectorFrame(), target).matrix();
             S deltaPosNormSquared = deltaPos.squaredNorm();
             if (deltaPosNormSquared < epsSqr) {
-                // already in a solution configuration
+                if (debug) std::clog << "already in a solution configuration" << std::endl;
                 return true;
             }
 
-            if (maxIters == 0)
+            if (maxIters == 0) {
+                if (debug) std::clog << "maxIters = 0" << std::endl;
                 return false;
+            }
 
             Jacobian J = L.asDiagonal() * jacobian();
             S v = 2;
@@ -433,12 +441,12 @@ namespace mpl::demo {
                 S dNorm = diffq.cwiseAbs().maxCoeff();
 
                 if (dNorm < epsJoints) {
-                    // failed: joint increment is too small
+                    if (debug) std::clog << "failed: joint increment is too small" << std::endl;
                     return false;
                 }
 
                 if (grad.transpose() * grad < epsJoints*epsJoints) {
-                    // failed: joint gradient is too small
+                    if (debug) std::clog << "failed: joint gradient is too small" << std::endl;
                     return false;
                 }
 
@@ -451,25 +459,30 @@ namespace mpl::demo {
                     .cwiseMax(jointMin())
                     .cwiseMin(jointMax()));
 
-                Delta deltaPosNew = L.asDiagonal() * Twist::diff(gripperAxis_, target).matrix();
+                Delta deltaPosNew = L.asDiagonal() * Twist::diff(getEndEffectorFrame(), target).matrix();
                 S deltaPosNewNormSquared = deltaPosNew.squaredNorm();
 
                 S rho = (deltaPosNormSquared - deltaPosNewNormSquared)
                     / (diffq.transpose() * (lambda * diffq + grad));
 
+                if (debug) std::clog << "d=" << deltaPosNewNormSquared << ", rho=" << rho << ", lambda=" << lambda << ", q=" << config_.transpose() << std::endl;
+                // std::clog << "rho = " << rho << ", lambda=" << lambda << ", dPos: " << deltaPosNormSquared << " -> " << deltaPosNewNormSquared << std::endl;
+
                 if (rho <= 0) {
                     lambda *= v;
                     v *= 2;
                     if (lambda == std::numeric_limits<Scalar>::infinity()) {
-                        // failed: lambda overflow
+                        if (debug) std::clog << "failed: lambda overflow" << std::endl;
                         return false;
                     }
                 } else {
                     q = config_;
                     deltaPos = deltaPosNew;
                     deltaPosNormSquared = deltaPosNewNormSquared;
-                    if (deltaPosNewNormSquared < epsSqr)
+                    if (deltaPosNewNormSquared < epsSqr) {
+                        if (debug) std::clog << "SOLVED!" << std::endl;
                         return true; // solved!
+                    }
 
                     J = L.asDiagonal() * jacobian();
                     S x = 2*rho - 1;
@@ -478,7 +491,7 @@ namespace mpl::demo {
                 }                     
             }
 
-            // failed: too many iterations
+            if (debug) std::clog << "failed: too many iterations" << std::endl;
             return false;
         }
 

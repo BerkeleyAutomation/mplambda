@@ -120,6 +120,7 @@ namespace mpl::demo {
 
         std::string start_;
         std::string goal_;
+        std::string goalRadius_;
 
         std::string min_;
         std::string max_;

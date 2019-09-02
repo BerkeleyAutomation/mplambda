@@ -38,7 +38,8 @@ Options:
   -E, --env-frame=X,Y,theta
   -r, --robot=MESH
   -s, --start=W,I,J,K,X,Y,Z
-  -g, --goal=W,I,J,K,X,Y,Z
+  -g, --goal=W,I,J,K,X,Y,Z      (may be in joint space or IK frame)
+  -G, --goal-radius=RADIUS      (may either be scalar or twist)
   -m, --min=X,Y,Z
   -M, --max=X,Y,Z
   -d, --check-resolution=DIST   (0 means use default)
@@ -51,8 +52,10 @@ mpl::demo::AppOptions::AppOptions(int argc, char *argv[]) {
         { "scenario", required_argument, NULL, 'S' },
         { "algorithm", required_argument, NULL, 'a' },
         { "env", required_argument, NULL, 'e' },
+        { "env-frame", required_argument, NULL, 'E' },
         { "robot", required_argument, NULL, 'r' },
         { "goal", required_argument, NULL, 'g' },
+        { "goal-radis", required_argument, NULL, 'G' },
         { "start", required_argument, NULL, 's' },
         { "min", required_argument, NULL, 'm' },
         { "max", required_argument, NULL, 'M' },
@@ -66,7 +69,7 @@ mpl::demo::AppOptions::AppOptions(int argc, char *argv[]) {
         { NULL, 0, NULL, 0 }
     };
 
-    for (int ch ; (ch = getopt_long(argc, argv, "S:a:e:E:r:g:s:m:M:c:I:t:d:f", longopts, NULL)) != -1 ; ) {
+    for (int ch ; (ch = getopt_long(argc, argv, "S:a:e:E:r:g:G:s:m:M:c:I:t:d:f", longopts, NULL)) != -1 ; ) {
         char *endp;
                 
         switch (ch) {
@@ -87,6 +90,9 @@ mpl::demo::AppOptions::AppOptions(int argc, char *argv[]) {
             break;
         case 'g':
             goal_ = optarg;
+            break;
+        case 'G':
+            goalRadius_ = optarg;
             break;
         case 's':
             start_ = optarg;

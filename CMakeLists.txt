@@ -62,3 +62,5 @@ target_link_libraries(mpl_fetch Eigen3::Eigen Threads::Threads ${ASSIMP_LIBRARIE
 #add_executable(${PROJECT_NAME} "main.cpp")
 #target_link_libraries(${PROJECT_NAME} PUBLIC AWS::aws-lambda-runtime)
 #aws_lambda_package_target(${PROJECT_NAME})
+
+add_subdirectory(test)
