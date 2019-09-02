@@ -58,11 +58,14 @@ int main(int argc, char *argv[]) {
     std::clog << "Gripper Axis:\n" << robot.gripperAxis().matrix() << std::endl;
     
     Eigen::Matrix<S, 6, 1> L;
-    L << 1, 1, 1,   1, 1, 1/1.570796326794897;
-    
-    if (!robot.ik(ikTarget, L)) {
-        std::cerr << "IK failed" << std::endl;
-        return EXIT_FAILURE;
+    L << 1, 1, 1,   1, 1, 0.00001; // /1.570796326794897;
+
+    for (int iter = 0 ; iter<100 ; ++iter) {
+        robot.setConfig(Robot::randomConfig(rng));
+        if (robot.ik(ikTarget, L)) {
+            std::clog << "IK SOLVED after " << iter << std::endl;
+            break;
+        }
     }
     
     robot.updateArticulatedBlenderScript(bpy);
