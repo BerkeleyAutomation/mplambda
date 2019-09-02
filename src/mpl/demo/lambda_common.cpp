@@ -171,10 +171,12 @@ namespace mpl::demo {
             using Scenario = mpl::demo::FetchScenario<S>;
             using State = typename Scenario::State;
             using Frame = typename Scenario::Frame;
+            using GoalRadius = Eigen::Matrix<S, 6, 1>;
             Frame envFrame = options.envFrame<Frame>();
             Frame goal = options.goal<Frame>();
+            GoalRadius goalRadius = options.goalRadius<GoalRadius>();
             runPlanner<Scenario, Algorithm>(
-                options, envFrame, options.env(), goal,
+                options, envFrame, options.env(), goal, goalRadius,
                 options.checkResolution(0.1));
         } else {
             throw std::invalid_argument("bad scenario: " + options.scenario());

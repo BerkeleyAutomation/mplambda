@@ -30,26 +30,25 @@ namespace mpl::demo {
         Frame envFrame_;
 
         Frame goal_;
+        Eigen::Matrix<S, 6, 1> goalL_;
+        S goalEps_;
 
         S invStepSize_;
-
-        static const auto& ikWeights() {
-            using Weights = Eigen::Matrix<S, 6, 1>;
-            static Weights L = (Weights() << 1, 1, 1, 0.1, 0.1, 0.1).finished();
-            return L;
-        }
 
     public:
         FetchScenario(
             const Frame& envFrame,
             const std::string& envMesh,
             const Frame& goal,
+            const Eigen::Matrix<S, 6, 1>& goalTol,
             S checkResolution = 0.01)
             : environment_(MeshLoad<Mesh>::load(envMesh, false))
             , envFrame_{envFrame}
             , goal_(goal)
             , invStepSize_(1 / checkResolution)
         {
+            goalEps_ = goalTol.minCoeff();
+            goalL_ = goalEps_ / goalTol.array();
         }
 
         const Space& space() const {
@@ -66,7 +65,7 @@ namespace mpl::demo {
         State sampleGoal(RNG& rng) {
             State q = randomSample(rng);
             Robot robot(q);
-            return (robot.ik(goal_, ikWeights(), 1e-5, 50)) ? robot.config() : q;
+            return (robot.ik(goal_, goalL_, goalEps_, 50)) ? robot.config() : q;
         }
 
 
@@ -74,7 +73,7 @@ namespace mpl::demo {
             // HACKY!  using ik solver to see if we're 0 steps away
             // from the goal!
             Robot robot(q);
-            return robot.ik(goal_, ikWeights(), 1e-5, 0);
+            return robot.ik(goal_, goalL_, goalEps_, 0);
         }
 
         bool isValid(const State& q) const {

@@ -198,6 +198,11 @@ namespace mpl::demo {
         T goal() const {
             return parse<T>("goal", goal_);
         }
+
+        template <class T>
+        T goalRadius() const {
+            return parse<T>("goal-radius", goalRadius_);
+        }
         
         template <class T>
         T min() const {
