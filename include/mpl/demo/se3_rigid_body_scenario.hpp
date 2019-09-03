@@ -55,8 +55,8 @@ namespace mpl::demo {
             const Eigen::MatrixBase<Min>& min,
             const Eigen::MatrixBase<Max>& max,
             S checkResolution)
-            : environment_(MeshLoad<Mesh>::load(envMesh, false))
-            , robot_(MeshLoad<Mesh>::load(robotMesh, true))
+            : environment_(MeshLoad<Mesh>::load(envMesh, false, false))
+            , robot_(MeshLoad<Mesh>::load(robotMesh, true, false))
             , goal_(goal)
             , min_(min)
             , max_(max)
@@ -87,6 +87,10 @@ namespace mpl::demo {
 
         const Space& space() const {
             return space_;
+        }
+
+        const Distance maxSteering() const {
+            return std::numeric_limits<Distance>::infinity();
         }
 
         template <class RNG>

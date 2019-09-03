@@ -4,6 +4,7 @@
 
 #include "twist.hpp"
 #include "blender_py.hpp"
+#include "../../jilog.hpp"
 #include <Eigen/Dense>
 #include <random>
 #include <fcl/narrowphase/collision.h>
@@ -107,7 +108,7 @@ namespace mpl::demo {
 
         static Config jointMin() {
             Config q;
-            q[kTorsoLiftJoint] = 0;
+            q[kTorsoLiftJoint] = 0.0;
             q[kShoulderPanJoint] = -1.6056;
             q[kShoulderLiftJoint] = -1.221;
             q[kUpperarmRollJoint] = -std::numeric_limits<Scalar>::infinity();
@@ -163,8 +164,8 @@ namespace mpl::demo {
             // sample unbounded joints in the range -PI to +PI.  Note:
             // torso_lift is included in this cwise min/max, but to no
             // effect since its bounds are less than +/- 3.14 meters.
-            static Config min = jointMin().cwiseMax(-PI);
-            static Config max = jointMax().cwiseMin(+PI);
+            static Config min = jointMin().cwiseMax(-4*PI);
+            static Config max = jointMax().cwiseMin(+4*PI);
             Config q;
             for (int i=0 ; i < kDOF ; ++i) {
                 std::uniform_real_distribution<S> dist(min[i], max[i]);
@@ -353,6 +354,9 @@ namespace mpl::demo {
         const Frame& wristRollLink() const { return wristRollLink_; }
         const Frame& gripperAxis() const { return gripperAxis_; }
 
+        // TODO: the gripperLink_ frame is actually in the center of
+        // the box that holds the gripper jaws.  The EE frame should
+        // be between the grippers.
         const Frame& getEndEffectorFrame() const {
             return gripperLink_;
         }
@@ -579,49 +583,93 @@ namespace mpl::demo {
             return false;
         }
 
-        bool inCollisionWith(const fcl::CollisionGeometry<S>* geom, const Frame& frame) const {
+        bool cc(
+            const fcl::CollisionGeometry<S>* ag,
+            const Frame& af,
+            const char *aName,
+            const fcl::CollisionGeometry<S>* bg,
+            const Frame& bf,
+            const char *bName,
+            fcl::CollisionRequest<S>& req,
+            fcl::CollisionResult<S>& res,
+            bool report) const
+        {
+            if (!fcl::collide(ag, af, bg, bf, req, res))
+                return false;
+            if (report)
+                JI_LOG(TRACE) << "collision: " << aName << " <-> " << bName;
+            return true;
+        }
+   
+        bool inCollisionWith(const fcl::CollisionGeometry<S>* geom, const Frame& frame, bool report = false) const {
             fcl::CollisionRequest<S> req;
             fcl::CollisionResult<S> res;
 
             const auto& G = collisionGeometry();
 
-            if (fcl::collide(geom, frame, &G.base_, tfBaseLink(), req, res))
+            if (cc(geom, frame, "geom", &G.base_, tfBaseLink(), "base", req, res, report))
                 return true;
 
-            if (fcl::collide(geom, frame, &G.torsoLift_, tfTorsoLiftLink(), req, res))
+            if (cc(geom, frame, "geom", &G.torsoLift_, tfTorsoLiftLink(), "torsoLift", req, res, report))
                 return true;
 
-            if (fcl::collide(geom, frame, &G.shoulderPan_, tfShoulderPanLink(), req, res))
+            if (cc(geom, frame, "geom", &G.shoulderPan_, tfShoulderPanLink(), "shoulderPan", req, res, report))
                 return true;
 
-            if (fcl::collide(geom, frame, &G.shoulderLift_, tfShoulderLiftLink(), req, res))
+            if (cc(geom, frame, "geom", &G.shoulderLift_, tfShoulderLiftLink(), "shoulderLift", req, res, report))
                 return true;
 
-            if (fcl::collide(geom, frame, &G.upperarmRoll_, tfUpperarmRollLink(), req, res))
+            if (cc(geom, frame, "geom", &G.upperarmRoll_, tfUpperarmRollLink(), "upperarmRoll", req, res, report))
                 return true;
             
-            if (fcl::collide(geom, frame, &G.elbowFlex_, tfElbowFlexLink(), req, res))
+            if (cc(geom, frame, "geom", &G.elbowFlex_, tfElbowFlexLink(), "elbowFlex", req, res, report))
                 return true;
 
-            if (fcl::collide(geom, frame, &G.forearmRoll_, tfForearmRollLink(), req, res))
+            if (cc(geom, frame, "geom", &G.forearmRoll_, tfForearmRollLink(), "forearmRoll", req, res, report))
                 return true;
             
-            if (fcl::collide(geom, frame, &G.wristFlex_, tfWristFlexLink(), req, res))
+            if (cc(geom, frame, "geom", &G.wristFlex_, tfWristFlexLink(), "wristFlex", req, res, report))
                 return true;
 
-            if (fcl::collide(geom, frame, &G.wristRoll_, tfWristRollLink(), req, res))
+            if (cc(geom, frame, "geom", &G.wristRoll_, tfWristRollLink(), "wristRoll", req, res, report))
                 return true;
 
-            if (fcl::collide(geom, frame, &G.gripper_, tfGripperLink(), req, res))
+            if (cc(geom, frame, "geom", &G.gripper_, tfGripperLink(), "gripper", req, res, report))
                 return true;
 
-            if (fcl::collide(geom, frame, &G.wristFlex_, tfWristFlexLink(), req, res))
+            if (cc(geom, frame, "geom", &G.wristFlex_, tfWristFlexLink(), "wristFlex", req, res, report))
                 return true;
             
-            if (fcl::collide(geom, frame, &G.head_, tfHeadLink(), req, res))
+            if (cc(geom, frame, "geom", &G.head_, tfHeadLink(), "head", req, res, report))
                 return true;
 
             return false;
+        }
+
+        template <class Char, class Traits, class Geom>
+        void renderCG(BlenderPy<Char, Traits> bpy, const Geom& geom, const Frame& frame, const char *name) const {
+            Eigen::IOFormat fmt(Eigen::StreamPrecision, Eigen::DontAlignCols, ", ", ", ");
+            Eigen::AngleAxis<S> aa{frame.linear()};
+
+            if constexpr (std::is_same_v<fcl::Capsule<S>, Geom> ||
+                          std::is_same_v<fcl::Cylinder<S>, Geom>)
+            {
+                bpy << "bpy.ops.mesh.primitive_cylinder_add("
+                    "vertices=24, radius=" << geom.radius << ", depth=" << geom.lz << ", "
+                    "view_align=False, enter_editmode=False, location=("
+                    << frame.translation().format(fmt) << "))";
+                bpy << "bpy.context.object.rotation_mode = 'AXIS_ANGLE'";
+                bpy << "bpy.context.object.rotation_axis_angle = ("
+                    << aa.angle() << ", " << aa.axis().format(fmt) << ")";
+                bpy << "bpy.context.object.name = \"" << name << "\"";
+            }
+        }
+
+        template <class Char, class Traits>
+        void toCollisionGeometryBlenderScript(BlenderPy<Char, Traits> bpy) const {
+            const auto& G = collisionGeometry();
+            renderCG(bpy, G.forearmRoll_, tfForearmRollLink(), "forearmRoll");
+            renderCG(bpy, G.elbowFlex_, tfElbowFlexLink(), "elbowFlex");
         }
 
         template <class Char, class Traits>

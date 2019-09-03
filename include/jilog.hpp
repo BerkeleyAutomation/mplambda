@@ -122,7 +122,7 @@ namespace jilog_impl {
 
         template <class D>
         LogStream& operator << (const Eigen::MatrixBase<D>& m) {
-            Eigen::IOFormat fmt(Eigen::FullPrecision, Eigen::DontAlignCols, " ", " ", "", "", "[", "]");                                    
+            Eigen::IOFormat fmt(Eigen::FullPrecision, Eigen::DontAlignCols, ", ", ",  ", "", "", "[", "]");                                    
             if (m.cols() == 1)
                 msg_ << m.transpose().format(fmt) << "^T";
             else

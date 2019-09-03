@@ -16,7 +16,7 @@ namespace mpl::demo {
         using Frame = typename Robot::Frame;
         using Transform = Frame;
         using State = typename Robot::Config;
-        using Space = unc::robotics::nigh::L1Space<S, Robot::kDOF>;
+        using Space = unc::robotics::nigh::LInfSpace<S, Robot::kDOF>;
         using Distance = S;
         
         static_assert(std::is_same_v<State, typename Space::Type>, "odd that this wouldn't be the case");
@@ -42,7 +42,7 @@ namespace mpl::demo {
             const Frame& goal,
             const Eigen::Matrix<S, 6, 1>& goalTol,
             S checkResolution = 0.01)
-            : environment_(MeshLoad<Mesh>::load(envMesh, false))
+            : environment_(MeshLoad<Mesh>::load(envMesh, false, true))
             , envFrame_{envFrame}
             , goal_{goal}
             , invStepSize_(1 / checkResolution)
@@ -57,18 +57,25 @@ namespace mpl::demo {
             return space_;
         }
 
+        const Distance maxSteering() const {
+            return 0.52;
+        }
+
         template <class RNG>
         State randomSample(RNG& rng) {
             return Robot::randomConfig(rng);
         }
 
-        // this isn't always a goal-biased sample
         template <class RNG>
         std::optional<State> sampleGoal(RNG& rng) {
-            State q = randomSample(rng);
-            Robot robot(q);
+            State near = Robot::randomConfig(rng);
+            Robot robot(near);
             if (!robot.ik(goal_, goalL_, goalEps_, 50))
                 return {};
+            
+            // if (isValid(near, robot.config(), false))
+            //     JI_LOG(TRACE) << "VALID path to goal";
+            
             return robot.config();
         }
 
@@ -80,22 +87,27 @@ namespace mpl::demo {
             return robot.ik(goal_, goalL_, goalEps_, 0);
         }
 
-        bool isValid(const State& q) const {
+        bool isValid(const State& q, bool report = false) const {
             Robot robot(q);
             
-            if (robot.selfCollision())
+            if (robot.selfCollision()) {
+                if (report)
+                    JI_LOG(TRACE) << "self-collision";
                 return false;
+            }
 
-            if (robot.inCollisionWith(&environment_, envFrame_))
+            if (robot.inCollisionWith(&environment_, envFrame_, report))
                 return false;
             
             return true;
         }
 
-        bool isValid(const State& from, const State& to) const {
-            assert(isValid(from));
-            if (!isValid(to))
+        bool isValid(const State& from, const State& to, bool report = false) const {
+            assert(isValid(from, report));
+            if (!isValid(to, report)) {
+                if (report) JI_LOG(TRACE) << " @ t = 1";
                 return false;
+            }
 
             std::size_t steps = std::ceil(space_.distance(from, to) * invStepSize_);
 
@@ -117,21 +129,28 @@ namespace mpl::demo {
             while (qStart != qEnd) {
                 auto [min, max] = queue[qStart++ % queue.size()];
                 if (min == max) {
-                    if (!isValid(interpolate(from, to, min * delta)))
+                    if (!isValid(interpolate(from, to, min * delta), report)) {
+                        if (report) JI_LOG(TRACE) << " @ t = " << min*delta;
                         return false;
+                    }
                 } else if (qEnd + 2 < qStart + queue.size()) {
                     std::size_t mid = (min + max) / 2;
-                    if (!isValid(interpolate(from, to, mid * delta)))
+                    if (!isValid(interpolate(from, to, mid * delta), report)) {
+                        if (report) JI_LOG(TRACE) << " @ t = " << mid*delta;
                         return false;
+                    }
                     if (min < mid)
                         queue[qEnd++ % queue.size()] = std::make_pair(min, mid-1);
                     if (mid < max)
                         queue[qEnd++ % queue.size()] = std::make_pair(mid+1, max);
                 } else {
                     // queue is full
-                    for (std::size_t i=min ; i<=max ; ++i)
-                        if (!isValid(interpolate(from, to, i*delta)))
+                    for (std::size_t i=min ; i<=max ; ++i) {
+                        if (!isValid(interpolate(from, to, i*delta), report)) {
+                            if (report) JI_LOG(TRACE) << " @ t = " << i*delta;
                             return false;
+                        }
+                    }
                 }
             }
 

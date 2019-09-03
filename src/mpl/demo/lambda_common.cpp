@@ -152,12 +152,29 @@ namespace mpl::demo {
         JI_LOG(INFO) << "samples (goal-biased) = " << planner.samplesConsidered() << " ("
                      << planner.goalBiasedSamples() << ")";
             
-        auto finalSolution = planner.solution();
-        if (finalSolution != solution) {
+        if (auto finalSolution = planner.solution()) {
+            if (finalSolution != solution)
+                sendPath(comm_, finalSolution);
             finalSolution.visit([] (const State& q) { JI_LOG(INFO) << "  " << q; });
-            sendPath(comm_, finalSolution);
         }
-            
+
+#if 0   // write the end-effector vertices to stdout
+        if constexpr (std::is_same_v<State, Eigen::Matrix<double, 8, 1>>) {
+            // std::map<const State*, std::size_t> stateIndex;
+            planner.visitTree([&] (const State& a, const State& b) {
+                demo::FetchRobot<double> robot(a);
+                Eigen::IOFormat fmt(Eigen::StreamPrecision, Eigen::DontAlignCols, " ", " ");
+                std::cout << "v " << robot.getEndEffectorFrame().translation().format(fmt) << std::endl;
+                // stateIndex.emplace(&a, stateIndex.size() + 1);
+            });
+            // planner.visitTree([&] (const State& a, const State& b) {
+            //     auto ait = stateIndex.find(&a);
+            //     auto bit = stateIndex.find(&b);
+            //     std::cout << "l " << ait->second << " " << bit->second << " " << ait->second << std::endl;
+            // });
+        }
+#endif
+
         comm_.sendDone();
     }
 

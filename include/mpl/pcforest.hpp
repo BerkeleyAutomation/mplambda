@@ -50,9 +50,9 @@ namespace mpl {
 
         unc::robotics::nigh::Nigh<Node*, Space, NodeKey, Concurrency, NNStrategy> nn_;
 
-        Distance maxDistance_{std::numeric_limits<Distance>::infinity()};
+        Distance maxDistance_;
         
-        Node* start_;
+        Node* start_{nullptr};
         std::atomic<Edge*> solution_{nullptr};
         std::atomic_int goalBiasedSamples_{0};
         std::vector<Thread> threads_;
@@ -132,6 +132,8 @@ namespace mpl {
         template <class ... Args>
         Planner(Args&& ... args)
             : scenario_(std::forward<Args>(args)...)
+            , nn_(scenario_.space())
+            , maxDistance_(scenario_.maxSteering())
             , kRRG_{E * (1 + 1/static_cast<Distance>(scenario_.space().dimensions()))}
         {
             int nThreads = std::max(1, omp_get_max_threads());
@@ -225,6 +227,12 @@ namespace mpl {
                 }
             }
         }
+
+        template <class Visitor>
+        void visitTree(Visitor visitor) const {
+            for (const auto& t : threads_)
+                t.visitTree(visitor);
+        }
     };
 
     template <class Scenario>
@@ -253,6 +261,10 @@ namespace mpl {
 
         Edge* edge(std::memory_order mo) {
             return edge_.load(mo);
+        }
+
+        const Edge* edge() const {
+            return edge_.load(std::memory_order_acquire);
         }
 
         bool casEdge(Edge *expect, Edge *value, std::memory_order success, std::memory_order failure) {
@@ -439,6 +451,7 @@ namespace mpl {
         }
 
         void setGoalBias(Distance d) {
+            JI_LOG(TRACE) << "thread goal bias set to " << d;
             goalBias_ = d;
         }
 
@@ -624,25 +637,38 @@ namespace mpl {
             
             Edge *s = planner.solution_.load(std::memory_order_acquire);
 
-            if (s == nullptr && goalBias_ > 0 && unif01(rng_) < goalBias_) {
-                if (auto q = planner.scenario_.sampleGoal(rng_)) {
-                    addSample(planner, *q, true);
-                    return;
+            if (s == nullptr) {
+                if (goalBias_ > 0 && unif01(rng_) < goalBias_) {
+                    if (auto q = planner.scenario_.sampleGoal(rng_)) {
+                        ++planner.goalBiasedSamples_;
+                        addSample(planner, *q, true);
+                        return;
+                    }
                 }
+                addSample(planner, planner.scenario_.randomSample(rng_), false);
+            } else {
+                State q;
+                do {
+                    q = planner.scenario_.randomSample(rng_);
+                } while (s->pathCost() <
+                         planner.distance(planner.start_->state(), q) +
+                         planner.distance(q, s->node()->state()));
+
+                addSample(planner, q, false);
             }
-
-            State q;
-            do {
-                q = planner.scenario_.randomSample(rng_);
-            } while (s->pathCost() < planner.distance(planner.start_->state(), q) + planner.distance(q, s->node()->state()));
-
-            addSample(planner, q, false);
         }
 
         template <class DoneFn>
         void solve(Planner& planner, DoneFn done) {
             while (!done())
                 addRandomSample(planner);
+        }
+
+        template <class Visitor>
+        void visitTree(Visitor& visitor) const {
+            for (const Node& n : nodes_)
+                if (const Edge *p = n.edge()->parent())
+                    visitor(n.state(), p->node()->state());
         }
     };
 }

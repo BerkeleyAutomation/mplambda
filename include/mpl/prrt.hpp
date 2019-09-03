@@ -147,6 +147,10 @@ namespace mpl {
                 }
             }
         }
+
+        template <class Visitor>
+        void visitTree(Visitor) const {
+        }
     };
 
     template <class Scenario>

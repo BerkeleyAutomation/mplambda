@@ -55,7 +55,8 @@ namespace mpl::demo {
     {
         std::size_t count = 0;
         using Vec3 = Eigen::Matrix<Scalar, 3, 1>;
-    
+
+        JI_LOG(INFO) << "name='" << node->mName.C_Str() << "', M=" << mapToEigen(node->mTransformation);
         transform *= mapToEigen(node->mTransformation).template cast<Scalar>();
         for (unsigned i=0 ; i<node->mNumMeshes ; ++i) {
             const aiMesh *mesh = scene->mMeshes[node->mMeshes[i]];
@@ -87,58 +88,58 @@ namespace mpl::demo {
         return count;
     }
 
-    template <class Mesh>
-    std::shared_ptr<Mesh> loadMesh(const std::string& name, bool shiftToCenter) {
-        using S = typename Mesh::S;
-        using Transform = Eigen::Transform<S, 3, Eigen::Isometry>;
-        using Vec3 = Eigen::Matrix<S, 3, 1>;
+    // template <class Mesh>
+    // std::shared_ptr<Mesh> loadMesh(const std::string& name, bool shiftToCenter) {
+    //     using S = typename Mesh::S;
+    //     using Transform = Eigen::Transform<S, 3, Eigen::Isometry>;
+    //     using Vec3 = Eigen::Matrix<S, 3, 1>;
 
-        JI_LOG(INFO) << "Loading mesh \"" << name << "\"";
+    //     JI_LOG(INFO) << "Loading mesh \"" << name << "\"";
     
-        std::shared_ptr<Mesh> model = std::make_shared<Mesh>();
+    //     std::shared_ptr<Mesh> model = std::make_shared<Mesh>();
 
-        Assimp::Importer importer;
+    //     Assimp::Importer importer;
     
-        static constexpr auto readOpts =
-            aiProcess_Triangulate | aiProcess_JoinIdenticalVertices |
-            aiProcess_SortByPType | aiProcess_OptimizeGraph | aiProcess_OptimizeMeshes;
+    //     static constexpr auto readOpts =
+    //         aiProcess_Triangulate | aiProcess_JoinIdenticalVertices |
+    //         aiProcess_SortByPType | aiProcess_OptimizeGraph | aiProcess_OptimizeMeshes;
 
-        const aiScene *scene = importer.ReadFile(name, readOpts);
-        if (scene == nullptr)
-            throw std::invalid_argument("could not load mesh file '" + name + "'");
+    //     const aiScene *scene = importer.ReadFile(name, readOpts);
+    //     if (scene == nullptr)
+    //         throw std::invalid_argument("could not load mesh file '" + name + "'");
 
-        if (!scene->HasMeshes())
-            throw std::invalid_argument("mesh file '" + name + "' does not contain meshes");
+    //     if (!scene->HasMeshes())
+    //         throw std::invalid_argument("mesh file '" + name + "' does not contain meshes");
     
-        // TODO: scene::inferBounds(bounds, vertices, factor_, add_);
+    //     // TODO: scene::inferBounds(bounds, vertices, factor_, add_);
     
-        Transform rootTransform = Transform::Identity();
+    //     Transform rootTransform = Transform::Identity();
 
-        if (shiftToCenter) {
-            Vec3 center = Vec3::Zero();
-            std::size_t nVertices = visitVertices(
-                scene,
-                scene->mRootNode,
-                rootTransform,
-                [&] (const Vec3& v) { center += v; });
-            center /= nVertices;
-            rootTransform *= Eigen::Translation<S, 3>(-center);
-            JI_LOG(INFO) << "shifted mesh to center: " << center;
-        }
+    //     if (shiftToCenter) {
+    //         Vec3 center = Vec3::Zero();
+    //         std::size_t nVertices = visitVertices(
+    //             scene,
+    //             scene->mRootNode,
+    //             rootTransform,
+    //             [&] (const Vec3& v) { center += v; });
+    //         center /= nVertices;
+    //         rootTransform *= Eigen::Translation<S, 3>(-center);
+    //         JI_LOG(INFO) << "shifted mesh to center: " << center;
+    //     }
 
-        model->beginModel();
-        std::size_t nTris = visitTriangles(
-            scene,
-            scene->mRootNode,
-            rootTransform,
-            [&] (const Vec3& a, const Vec3& b, const Vec3& c) {
-                model->addTriangle(a, b, c);
-            });
-        model->endModel();
-        model->computeLocalAABB();
+    //     model->beginModel();
+    //     std::size_t nTris = visitTriangles(
+    //         scene,
+    //         scene->mRootNode,
+    //         rootTransform,
+    //         [&] (const Vec3& a, const Vec3& b, const Vec3& c) {
+    //             model->addTriangle(a, b, c);
+    //         });
+    //     model->endModel();
+    //     model->computeLocalAABB();
 
-        return model;
-    };
+    //     return model;
+    // };
 
     void extractTriangles(const aiScene *scene, const aiNode *node, aiMatrix4x4 transform,
                           std::vector<aiVector3D> &triangles)
@@ -174,56 +175,56 @@ namespace mpl::demo {
             extractVertices(scene, node->mChildren[n], transform, vertices);
     }
 
-    template <class Mesh>
-    std::shared_ptr<Mesh> loadMesh2(const std::string& name, bool shiftToCenter) {
-        using S = typename Mesh::S;
+    // template <class Mesh>
+    // std::shared_ptr<Mesh> loadMesh2(const std::string& name, bool shiftToCenter) {
+    //     using S = typename Mesh::S;
         
-        std::shared_ptr<Mesh> mesh = std::make_shared<Mesh>();
+    //     std::shared_ptr<Mesh> mesh = std::make_shared<Mesh>();
 
-        Assimp::Importer importer;
+    //     Assimp::Importer importer;
         
-        const aiScene *aiScene = importer.ReadFile(
-            name,
-            aiProcess_GenNormals | aiProcess_Triangulate |
-            aiProcess_JoinIdenticalVertices | aiProcess_SortByPType | aiProcess_OptimizeGraph);
+    //     const aiScene *aiScene = importer.ReadFile(
+    //         name,
+    //         aiProcess_GenNormals | aiProcess_Triangulate |
+    //         aiProcess_JoinIdenticalVertices | aiProcess_SortByPType | aiProcess_OptimizeGraph);
 
-        if (aiScene == nullptr)
-            throw std::invalid_argument("unable to load: " + name);
+    //     if (aiScene == nullptr)
+    //         throw std::invalid_argument("unable to load: " + name);
         
-        if (!aiScene->HasMeshes())
-            throw std::invalid_argument("No mesh found in " + name);
+    //     if (!aiScene->HasMeshes())
+    //         throw std::invalid_argument("No mesh found in " + name);
 
-        std::vector<aiVector3D> vertices;
-        extractVertices(aiScene, aiScene->mRootNode, aiMatrix4x4(), vertices);
-        aiVector3D center;
-        center.Set(0, 0, 0);
-        for (auto& v : vertices)
-            center += v;
-        center /= vertices.size();
+    //     std::vector<aiVector3D> vertices;
+    //     extractVertices(aiScene, aiScene->mRootNode, aiMatrix4x4(), vertices);
+    //     aiVector3D center;
+    //     center.Set(0, 0, 0);
+    //     for (auto& v : vertices)
+    //         center += v;
+    //     center /= vertices.size();
 
-        std::vector<fcl::Triangle> triangles;
-        std::vector<fcl::Vector3<S>> pts;
-        vertices.clear();
-        extractTriangles(aiScene, aiScene->mRootNode, aiMatrix4x4(), vertices);
-        assert(vertices.size() % 3 == 0);
+    //     std::vector<fcl::Triangle> triangles;
+    //     std::vector<fcl::Vector3<S>> pts;
+    //     vertices.clear();
+    //     extractTriangles(aiScene, aiScene->mRootNode, aiMatrix4x4(), vertices);
+    //     assert(vertices.size() % 3 == 0);
 
-        if (shiftToCenter) {
-            for (auto& j : vertices)
-                j -= center;
-        }
+    //     if (shiftToCenter) {
+    //         for (auto& j : vertices)
+    //             j -= center;
+    //     }
 
-        for (auto& j : vertices)
-            pts.emplace_back(j[0], j[1], j[2]);
+    //     for (auto& j : vertices)
+    //         pts.emplace_back(j[0], j[1], j[2]);
         
-        for (unsigned j = 0 ; j<vertices.size() ; j += 3)
-            triangles.emplace_back(j, j+1, j+2);
+    //     for (unsigned j = 0 ; j<vertices.size() ; j += 3)
+    //         triangles.emplace_back(j, j+1, j+2);
 
-        mesh->beginModel();
-        mesh->addSubModel(pts, triangles);
-        mesh->endModel();
-        mesh->computeLocalAABB();
-        return mesh;
-    }
+    //     mesh->beginModel();
+    //     mesh->addSubModel(pts, triangles);
+    //     mesh->endModel();
+    //     mesh->computeLocalAABB();
+    //     return mesh;
+    // }
 
     template <class Mesh>
     struct MeshLoad;
@@ -231,11 +232,11 @@ namespace mpl::demo {
     template <class S>
     struct MeshLoad<fcl::BVHModel<fcl::OBBRSS<S>>> {
         using Mesh = fcl::BVHModel<fcl::OBBRSS<S>>;
-        static Mesh load(const std::string& name, bool shiftToCenter) {
+        static Mesh load(const std::string& name, bool shiftToCenter, bool identityRootTransform) {
             using Transform = Eigen::Transform<S, 3, Eigen::Isometry>;
             using Vec3 = Eigen::Matrix<S, 3, 1>;
 
-            JI_LOG(INFO) << "Loading mesh \"" << name << "\"";
+            // JI_LOG(INFO) << "Loading mesh \"" << name << "\"";
             
             Mesh model;
 
@@ -251,6 +252,9 @@ namespace mpl::demo {
             
             if (!scene->HasMeshes())
                 throw std::invalid_argument("mesh file '" + name + "' does not contain meshes");
+
+            if (identityRootTransform)
+                scene->mRootNode->mTransformation = aiMatrix4x4();
             
             // TODO: scene::inferBounds(bounds, vertices, factor_, add_);
             
@@ -279,64 +283,69 @@ namespace mpl::demo {
             model.endModel();
             model.computeLocalAABB();
 
+            JI_LOG(INFO) << "Loaded mesh \"" << name << "\" AABB={c=" << model.aabb_center
+                         << ", r=" << model.aabb_radius
+                         << ", min=" << model.aabb_local.min_
+                         << ", max=" << model.aabb_local.max_ << "}";
+
             return model;
         }
     };
-#if 0
-    template <class I, class S>
-    struct MeshLoad<bump::BVHMesh<bump::Triangle<I>, bump::OBB<S>>> {
-        using Mesh = bump::BVHMesh<bump::Triangle<I>, bump::OBB<S>>;
-        static Mesh load(const std::string& name, bool shiftToCenter) {
-            using Transform = Eigen::Transform<S, 3, Eigen::AffineCompact>;
-            using Vec3 = Eigen::Matrix<S, 3, 1>;
-            Assimp::Importer importer;
+// #if 0
+//     template <class I, class S>
+//     struct MeshLoad<bump::BVHMesh<bump::Triangle<I>, bump::OBB<S>>> {
+//         using Mesh = bump::BVHMesh<bump::Triangle<I>, bump::OBB<S>>;
+//         static Mesh load(const std::string& name, bool shiftToCenter) {
+//             using Transform = Eigen::Transform<S, 3, Eigen::AffineCompact>;
+//             using Vec3 = Eigen::Matrix<S, 3, 1>;
+//             Assimp::Importer importer;
 
-            static constexpr auto readOpts =
-                aiProcess_Triangulate | aiProcess_JoinIdenticalVertices |
-                aiProcess_SortByPType | aiProcess_OptimizeGraph | aiProcess_OptimizeMeshes;
+//             static constexpr auto readOpts =
+//                 aiProcess_Triangulate | aiProcess_JoinIdenticalVertices |
+//                 aiProcess_SortByPType | aiProcess_OptimizeGraph | aiProcess_OptimizeMeshes;
 
-            const aiScene *scene = importer.ReadFile(name, readOpts);
+//             const aiScene *scene = importer.ReadFile(name, readOpts);
 
-            if (scene == nullptr)
-                throw std::invalid_argument("could not load mesh file '" + name + "'");
+//             if (scene == nullptr)
+//                 throw std::invalid_argument("could not load mesh file '" + name + "'");
             
-            if (!scene->HasMeshes())
-                throw std::invalid_argument("mesh file '" + name + "' does not contain meshes");
+//             if (!scene->HasMeshes())
+//                 throw std::invalid_argument("mesh file '" + name + "' does not contain meshes");
             
-            Transform rootTransform = Transform::Identity();
+//             Transform rootTransform = Transform::Identity();
             
-            if (shiftToCenter) {
-                Vec3 center = Vec3::Zero();
-                std::size_t nVertices = visitVertices(
-                    scene,
-                    scene->mRootNode,
-                    Transform::Identity(),
-                    [&] (const Vec3& v) { center += v; });
-                center /= nVertices;
-                rootTransform *= Eigen::Translation<S, 3>(-center);
-                JI_LOG(INFO) << "shifted mesh to center: " << center;
-            }
+//             if (shiftToCenter) {
+//                 Vec3 center = Vec3::Zero();
+//                 std::size_t nVertices = visitVertices(
+//                     scene,
+//                     scene->mRootNode,
+//                     Transform::Identity(),
+//                     [&] (const Vec3& v) { center += v; });
+//                 center /= nVertices;
+//                 rootTransform *= Eigen::Translation<S, 3>(-center);
+//                 JI_LOG(INFO) << "shifted mesh to center: " << center;
+//             }
             
-            std::vector<Vec3> vertices;
-            std::vector<bump::Triangle<I>> triangles;
+//             std::vector<Vec3> vertices;
+//             std::vector<bump::Triangle<I>> triangles;
             
-            std::size_t nTris = visitTriangles(
-                scene,
-                scene->mRootNode,
-                rootTransform,
-                [&] (const Vec3& a, const Vec3& b, const Vec3& c) {
-                    I i = vertices.size();
-                    vertices.push_back(a);
-                    vertices.push_back(b);
-                    vertices.push_back(c);
+//             std::size_t nTris = visitTriangles(
+//                 scene,
+//                 scene->mRootNode,
+//                 rootTransform,
+//                 [&] (const Vec3& a, const Vec3& b, const Vec3& c) {
+//                     I i = vertices.size();
+//                     vertices.push_back(a);
+//                     vertices.push_back(b);
+//                     vertices.push_back(c);
                     
-                    triangles.emplace_back(i, i+1, i+2);
-                });
+//                     triangles.emplace_back(i, i+1, i+2);
+//                 });
             
-            return bump::BVHMesh<bump::Triangle<int>>(vertices, triangles);
-        }
-    };
-#endif
+//             return bump::BVHMesh<bump::Triangle<int>>(vertices, triangles);
+//         }
+//     };
+// #endif
 
     
 }
