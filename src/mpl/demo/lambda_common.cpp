@@ -149,8 +149,9 @@ namespace mpl::demo {
         
         JI_LOG(INFO) << "solution " << (planner.isSolved() ? "" : "not ") << "found after " << (Clock::now() - start);
         JI_LOG(INFO) << "graph size = " << planner.size();
-        JI_LOG(INFO) << "samples (goal-biased) = " << planner.samplesConsidered() << " ("
-                     << planner.goalBiasedSamples() << ")";
+        JI_LOG(INFO) << "samples (goal-biased, rejected) = " << planner.samplesConsidered() << " ("
+                     << planner.goalBiasedSamples() << ", "
+                     << planner.rejectedSamples() << ")";
             
         if (auto finalSolution = planner.solution()) {
             if (finalSolution != solution)

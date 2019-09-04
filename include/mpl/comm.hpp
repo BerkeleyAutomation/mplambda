@@ -6,6 +6,7 @@
 #include <netdb.h>
 #include "write_queue.hpp"
 #include "packet.hpp"
+#include "syserr.hpp"
 
 namespace mpl {
     class Comm {
@@ -120,12 +121,23 @@ void mpl::Comm::processImpl(PacketFn fn) {
         if ((n = ::recv(socket_, rBuf_.begin(), rBuf_.remaining(), 0)) < 0) {
             if (errno == EAGAIN || errno == EINTR)
                 return;
-            throw std::system_error(errno, std::system_category(), "recv");
+            done_ = true;
+            throw syserr("recv");
         }
         
         if (n == 0) {
             JI_LOG(TRACE) << "connection closed";
             close();
+            // for now, if the connection was established but then
+            // closes, we mark this process as done.  The thought
+            // being that if we continue processing and fine a
+            // solution, we have nothing to communicate it to.  In the
+            // future it may make sense to try to reconnect to the
+            // coordinator before giving up (depending on how flakey
+            // connections are).  If we do change the behavior, we'll
+            // have to think through what to do when there is a
+            // connection error too.
+            done_ = true;
             state_ = DISCONNECTED;
             break;
         }

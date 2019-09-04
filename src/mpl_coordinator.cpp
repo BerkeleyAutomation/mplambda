@@ -2,6 +2,7 @@
 #include <mpl/buffer.hpp>
 #include <mpl/write_queue.hpp>
 #include <mpl/packet.hpp>
+#include <mpl/syserr.hpp>
 #include <netinet/ip.h>
 #include <netinet/tcp.h>
 #include <poll.h>
@@ -11,7 +12,6 @@
 #include <sys/socket.h>
 #include <sys/types.h>
 #include <sys/wait.h>
-#include <system_error>
 #include <unistd.h>
 #include <fcntl.h>
 
@@ -42,11 +42,11 @@ namespace mpl {
             : listen_(::socket(PF_INET, SOCK_STREAM, 0))
         {
             if (listen_ == -1)
-                throw std::system_error(errno, std::system_category(), "socket()");
+                throw syserr("socket()");
 
             int on = 1;
             if (::setsockopt(listen_, SOL_SOCKET, SO_REUSEADDR, &on, sizeof(on)) == -1)
-                throw std::system_error(errno, std::system_category(), "set reuse addr");
+                throw syserr("set reuse addr");
             
             struct sockaddr_in addr;
             addr.sin_family = AF_INET;
@@ -54,16 +54,16 @@ namespace mpl {
             addr.sin_port = htons(port);
             
             if (::bind(listen_, reinterpret_cast<struct sockaddr*>(&addr), sizeof(addr)) == -1)
-                throw std::system_error(errno, std::system_category(), "bind()");
+                throw syserr("bind()");
 
             socklen_t addrLen = sizeof(addr);
             if (::getsockname(listen_, reinterpret_cast<struct sockaddr*>(&addr), &addrLen) == -1)
-                throw std::system_error(errno, std::system_category(), "getsockname()");
+                throw syserr("getsockname()");
 
             JI_LOG(INFO) << "listening on port: " << ntohs(addr.sin_port);
             
             if (::listen(listen_, 5) == -1)
-                throw std::system_error(errno, std::system_category(), "listen()");
+                throw syserr("listen()");
         }
         
         ~Coordinator() {
@@ -89,12 +89,21 @@ namespace mpl {
 
     class Coordinator::GroupData {
         Connection* initiator_;
+        bool done_{false};
         std::list<Connection*> connections_;
         
     public:
         GroupData(Connection* initiator)
             : initiator_(initiator)
         {
+        }
+
+        bool isDone() const {
+            return done_;
+        }
+
+        void done() {
+            done_ = true;
         }
 
         Connection* initiator() {
@@ -124,11 +133,14 @@ namespace mpl {
             
             ssize_t n = ::recv(socket_, rBuf_.begin(), rBuf_.remaining(), 0);
             JI_LOG(TRACE) << "recv " << n;
-            if (n < 0)
-                throw std::system_error(errno, std::system_category(), "recv");
-
-            if (n == 0)
-                return false;
+            if (n <= 0) {
+                // on error (-1) or connection close (0), send DONE to
+                // the group to which this connection is attached.
+                if (group_)
+                    coordinator_.done(group_, this);
+                
+                return (n < 0) ? throw syserr("recv") : false;
+            }
 
             rBuf_ += n;
             rBuf_.flip();
@@ -156,13 +168,16 @@ namespace mpl {
             if (group_ == nullptr || group_->first != pkt.id()) {
                 JI_LOG(WARN) << "DONE group id mismatch";
             } else {
-                // coordinator_.groupDone(group_, this);
                 coordinator_.done(group_, this);
+                group_ = nullptr;
             }
         }
 
         void process(packet::Problem&& pkt) {
-            JI_LOG(INFO) << "got Problem";
+            JI_LOG(INFO) << "got Problem from " << socket_;
+
+            // if this connection is connected to a group, send DONE
+            // to that group before starting a new group.
             if (group_)
                 coordinator_.done(group_, this);
             
@@ -209,6 +224,10 @@ namespace mpl {
             return { socket_, static_cast<short>(writeQueue_.empty() ? POLLIN : (POLLIN | POLLOUT)), 0 };
         }
 
+        void degroup() {
+            group_ = nullptr;
+        }
+
         template <class Packet>
         void write(Packet&& packet) {
             writeQueue_.push_back(std::forward<Packet>(packet));
@@ -251,7 +270,7 @@ std::pair<int, int> mpl::launchLambda(std::uint64_t pId, packet::Problem& prob) 
     // event in the poll() loop.
     int p[2];
     if (::pipe(p) == -1)
-        throw std::system_error(errno, std::system_category(), "pipe");
+        throw syserr("pipe");
     
     if (int pid = ::fork()) {
         // parent process
@@ -306,7 +325,7 @@ std::pair<int, int> mpl::launchLambda(std::uint64_t pId, packet::Problem& prob) 
     execv(path.c_str(), const_cast<char*const*>(argv.data()));
     
     // if exec returns, then there was a problem
-    throw std::system_error(errno, std::system_category(), "exec");
+    throw syserr("exec");
 }
 
 auto mpl::Coordinator::createGroup(Connection* initiator) -> Group* {
@@ -318,7 +337,7 @@ auto mpl::Coordinator::createGroup(Connection* initiator) -> Group* {
 
 auto mpl::Coordinator::addToGroup(ID id, Connection* conn) -> Group* {
     auto it = groups_.find(id);
-    if (it == groups_.end())
+    if (it == groups_.end() || it->second.isDone())
         return nullptr;
     
     it->second.connections().push_back(conn);
@@ -327,17 +346,36 @@ auto mpl::Coordinator::addToGroup(ID id, Connection* conn) -> Group* {
 
 void mpl::Coordinator::done(Group* group, Connection* conn) {
     auto& connections = group->second.connections();
+
+    // when we get a DONE packet, broadcast DONE to all other
+    // connections and mark the group as done.  We broadcast only on
+    // the first DONE, but remove the connection from the group in any
+    // case.
     for (auto it = connections.begin() ; it != connections.end() ; ) {
         if (*it == conn) {
             it = connections.erase(it);
         } else {
-            (*it)->write(packet::Done(group->first));
+            if (!group->second.isDone())
+                (*it)->write(packet::Done(group->first));
             ++it;
         }
     }
-    
-    if (group->second.initiator() == conn) {
+    group->second.done();
+
+    // if we're DONE and have no remaining connections, we send DONE
+    // to the initiator.
+    if (connections.empty()) {
+        JI_LOG(INFO) << "no remaining connections in group, sending DONE to initiator";
+        group->second.initiator()->write(packet::Done(group->first));
+    }
+
+    // if there are no more connections, or the initiator caused the
+    // DONE (from a new problem), then we remove the group.
+    if (connections.empty() || group->second.initiator() == conn) {
         JI_LOG(INFO) << "removing group " << group->first;
+        for (auto it = connections.begin() ; it != connections.end() ; ++it)
+            (*it)->degroup();
+                
         auto it = groups_.find(group->first);
         if (it != groups_.end())
             groups_.erase(it);
@@ -389,7 +427,7 @@ void mpl::Coordinator::loop() {
         if (nReady == -1) {
             if (errno == EAGAIN || errno == EINTR)
                 continue;
-            throw std::system_error(errno, std::system_category(), "poll");
+            throw syserr("poll");
         }
 
         auto pit = pfds.begin();

@@ -2,6 +2,7 @@
 #include <mpl/buffer.hpp>
 #include <mpl/write_queue.hpp>
 #include <mpl/packet.hpp>
+#include <mpl/syserr.hpp>
 #include <mpl/demo/app_options.hpp>
 #include <mpl/demo/se3_rigid_body_scenario.hpp>
 #include <netdb.h>
@@ -67,7 +68,7 @@ namespace mpl {
 
             ssize_t n = ::recv(socket_, rBuf_.begin(), rBuf_.remaining(), 0);
             if (n < 0)
-                throw std::system_error(errno, std::system_category(), "recv");
+                throw syserr("recv");
             if (n == 0) {
                 ::close(std::exchange(socket_, -1));
                 return;
@@ -85,6 +86,11 @@ namespace mpl {
         template <class T>
         void process(T&&) {
             JI_LOG(WARN) << "unexpected packet type: " << T::name();
+        }
+
+        void process(packet::Done&& pkt) {
+            JI_LOG(INFO) << "Received DONE";
+            ::close(std::exchange(socket_, -1));
         }
 
         template <class State>
@@ -108,13 +114,15 @@ namespace mpl {
                     pfd.events |= POLLOUT;
 
                 if (::poll(&pfd, 1, -1) == -1)
-                    throw std::system_error(errno, std::system_category(), "poll()");
+                    throw syserr("poll()");
+
+                JI_LOG(TRACE) << "poll returned events: " << pfd.revents;
+
+                if (pfd.revents & POLLOUT)
+                    writeQueue_.writeTo(socket_);
 
                 if (pfd.revents & POLLIN)
                     doRead();
-                
-                if (pfd.revents & POLLOUT)
-                    writeQueue_.writeTo(socket_);
             }
         }
     };
