@@ -14,18 +14,32 @@
 #include <sys/wait.h>
 #include <unistd.h>
 #include <fcntl.h>
+#include <getopt.h>
+
+#if HAS_AWS_SDK
+
+#endif
 
 namespace mpl {
     // template <class S>
     // std::pair<int, int> launchLambda(std::uint64_t pId, packet::ProblemSE3<S>& prob);
 
-    std::pair<int, int> launchLambda(std::uint64_t pId, packet::Problem& prob);
+    enum LambdaType {
+	LAMBDA_PSEUDO,
+	LAMBDA_AWS,
+	LAMBDA_SSH,
+    };
 
     class Coordinator {
         using ID = std::uint64_t;
-        
-        int listen_{-1};
 
+	int port_{0x415E};
+        int listen_{-1};
+	std::string sshIdentity_;
+	std::vector<std::string> sshServers_;
+
+	LambdaType lambdaType_{LAMBDA_PSEUDO};
+	
         class GroupData;
         class Connection;
 
@@ -36,12 +50,57 @@ namespace mpl {
         std::list<Connection> connections_;
         std::list<std::pair<int, int>> childProcesses_;
         std::map<ID, GroupData> groups_;
-        
+
+	std::pair<int, int> launchPseudoLambda(std::uint64_t pId, packet::Problem& prob);
+	static void launchAWSLambda(std::uint64_t pId, packet::Problem& prob);
+	static void usage();
     public:
-        Coordinator(int port = 0x415E)
-            : listen_(::socket(PF_INET, SOCK_STREAM, 0))
-        {
-            if (listen_ == -1)
+	Coordinator(int argc, char *argv[]) {
+	    static struct option longopts[] = {
+		{ "port", required_argument, 0, 'p' },
+		{ "lambda-type", required_argument, 0, 'l' },
+		{ "ssh", required_argument, 0, 's' },
+		
+		{ NULL, 0, NULL, 0 }
+	    };
+
+	    for (int ch ; (ch = ::getopt_long(argc, argv, "p:l:s:i:", longopts, NULL) != -1) ; ) {
+		char *endp;
+		switch (ch) {
+		case 'p':
+		    port_ = (int)std::strtol(optarg, &endp, 10);
+		    if (endp == optarg || *endp || port_ < 0)
+			throw std::invalid_argument("bad port number");
+		    break;
+		case 'l':
+		    if (std::strcmp("aws", optarg) == 0 ||
+			std::strcmp("AWS", optarg) == 0)
+			lambdaType_ = LAMBDA_AWS;
+		    else if (std::strcmp("pseudo", optarg) == 0)
+			lambdaType_ = LAMBDA_PSEUDO;
+		    else if (std::strcmp("ssh", optarg) == 0)
+			lambdaType_ = LAMBDA_SSH;
+			throw std::invalid_argument("bad lambda type");
+		    break;
+		case 'i':
+		    sshIdentity_ = optarg;
+		    break;
+		case 's':
+		    sshServers_.push_back(optarg);
+		    break;
+		default:
+		    throw std::invalid_argument("see above");
+		}
+	    }
+	}
+
+	~Coordinator() {
+            if (listen_ != -1 && !::close(listen_))
+                JI_LOG(WARN) << "failed to close listening socket";                
+        }
+
+	void start() {
+	    if ((listen_ = ::socket(PF_INET, SOCK_STREAM, 0)) == -1)
                 throw syserr("socket()");
 
             int on = 1;
@@ -51,7 +110,7 @@ namespace mpl {
             struct sockaddr_in addr;
             addr.sin_family = AF_INET;
             addr.sin_addr.s_addr = htonl(INADDR_ANY);
-            addr.sin_port = htons(port);
+            addr.sin_port = htons(port_);
             
             if (::bind(listen_, reinterpret_cast<struct sockaddr*>(&addr), sizeof(addr)) == -1)
                 throw syserr("bind()");
@@ -66,11 +125,6 @@ namespace mpl {
                 throw syserr("listen()");
         }
         
-        ~Coordinator() {
-            if (listen_ != -1 && !::close(listen_))
-                JI_LOG(WARN) << "failed to close listening socket";                
-        }
-
         int accept(struct sockaddr *addr, socklen_t * addrLen) {
             return ::accept(listen_, addr, addrLen);
         }
@@ -257,9 +311,18 @@ namespace mpl {
     }
 }
 
+void mpl::Coordinator::launchAWSLambda(std::uint64_t pId, packet::Problem& prob) {
+#if !HAS_AWS_SDK
+    throw std::invalid_argument("AWS SDK is not available");
+#else
+
+#endif
+}
+
+
 // returns a pair of process-id and pipe-fd associated with the
 // child process
-std::pair<int, int> mpl::launchLambda(std::uint64_t pId, packet::Problem& prob) {
+std::pair<int, int> mpl::Coordinator::launchPseudoLambda(std::uint64_t pId, packet::Problem& prob) {
     // static const std::string resourceDirectory = "../../resources/";
     static int lambdaId;
     ++lambdaId;
@@ -384,8 +447,19 @@ void mpl::Coordinator::broadcast(T&& packet, Group* group, Connection* conn) {
 }
 
 void mpl::Coordinator::launchLambdas(ID groupId, packet::Problem&& prob, int nLambdas) {
-    for (int i=0 ; i<nLambdas ; ++i)
-        childProcesses_.emplace_back(launchLambda(groupId, prob));
+    switch (lambdaType_) {
+    case LAMBDA_PSEUDO:
+    case LAMBDA_SSH:
+	for (int i=0 ; i<nLambdas ; ++i)
+	    childProcesses_.emplace_back(launchPseudoLambda(groupId, prob));
+	break;
+    case LAMBDA_AWS:
+	for (int i=0 ; i<nLambdas ; ++i)
+	    launchAWSLambda(groupId, prob);
+	break;
+    default:
+	abort();
+    }
 }
 
 void mpl::Coordinator::loop() {
@@ -473,8 +547,12 @@ void mpl::Coordinator::loop() {
 }
 
 
-int main(int argc, char *argv[]) {
-    mpl::Coordinator coordinator;
-    
+int main(int argc, char *argv[]) try {
+    mpl::Coordinator coordinator(argc, argv);
+    coordinator.start();
     coordinator.loop();
+    return EXIT_SUCCESS;
+} catch (const std::exception& ex) {
+    std::clog << ex.what() << std::endl;
+    return EXIT_FAILURE;
 }
