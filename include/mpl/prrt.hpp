@@ -64,7 +64,7 @@ namespace mpl {
         }
 
         decltype(auto) nearest(const State& q) {
-            return nn_.nearest(q);
+            return nn_.nearest(Scenario::scale(q));
         }
 
         decltype(auto) isValid(const State& q) {
@@ -122,6 +122,10 @@ namespace mpl {
         int samplesConsidered() const {
             return std::accumulate(
                 threads_.begin(), threads_.end(), 0, [&] (int a, const auto& t) { return a + t.samples(); });
+        }
+
+        int rejectedSamples() const {
+            return 0;
         }
 
         Solution solution() const {
@@ -207,7 +211,9 @@ namespace mpl {
             Distance cost = 0;
             const Node *p = node_;
             for (const Node *p = node_, *n ; (n = p->parent()) != nullptr ; p = n)
-                cost += planner_->space().distance(p->state(), n->state());
+                cost += planner_->space().distance(
+                    Scenario::scale(p->state()),
+                    Scenario::scale(n->state()));
             
             return cost;
         }
@@ -229,8 +235,8 @@ namespace mpl {
 
     template <class Scenario>
     struct Planner<Scenario, PRRT>::NodeKey {
-        const State& operator() (const Node* node) const {
-            return node->state();
+        State operator() (const Node* node) const {
+            return Scenario::scale(node->state());
         }
     };
 

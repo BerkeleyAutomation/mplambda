@@ -78,12 +78,12 @@ namespace mpl {
         // }
         
         decltype(auto) nearest(const State& q) {
-            return nn_.nearest(q);
+            return nn_.nearest(Scenario::scale(q));
         }
 
         void nearest(Neighborhood& nbh, const State& q) {
             unsigned k = std::ceil(kRRG_ * std::log(Distance(nn_.size() + 1)));
-            nn_.nearest(nbh, q, k);
+            nn_.nearest(nbh, Scenario::scale(q), k);
         }
         
         decltype(auto) isValid(const State& q) {
@@ -95,7 +95,8 @@ namespace mpl {
         }
 
         Distance distance(const State& a, const State& b) const {
-            return scenario_.space().distance(a, b);
+            return scenario_.space().distance(
+                Scenario::scale(a), Scenario::scale(b));
         }
 
         decltype(auto) isGoal(const State& q) const {
@@ -196,9 +197,19 @@ namespace mpl {
             return goalBiasedSamples_;
         }
 
+    private:
+        template <class T, class Fn>
+        T threadAccum(T init, Fn fn) const {
+            return std::accumulate(threads_.begin(), threads_.end(), init, fn);
+        }
+
+    public:
         int samplesConsidered() const {
-            return std::accumulate(
-                threads_.begin(), threads_.end(), 0, [&] (int a, const auto& t) { return a + t.samples(); });
+            return threadAccum(0, [&] (int a, const auto& t) { return a + t.samples(); });
+        }
+
+        int rejectedSamples() const {
+            return threadAccum(0, [&] (int a, const auto& t) { return a + t.rejectedSamples(); });
         }
 
         Solution solution() const {
@@ -404,8 +415,8 @@ namespace mpl {
 
     template <class Scenario>
     struct Planner<Scenario, PCForest>::NodeKey {
-        const State& operator() (const Node* node) const {
-            return node->state();
+        State operator() (const Node* node) const {
+            return Scenario::scale(node->state());
         }
     };
 
@@ -426,7 +437,8 @@ namespace mpl {
         std::vector<ParentCandidate> parentHeap_;
 
         Distance goalBias_{0};
-        std::atomic_int samples_{0};
+        int samples_{0};
+        int rejectedSamples_{0};
 
     public:
         Thread(Thread&& other)
@@ -436,7 +448,8 @@ namespace mpl {
             , nbh_(std::move(other.nbh_))
             , parentHeap_(std::move(other.parentHeap_))
             , goalBias_(other.goalBias_)
-            , samples_(other.samples_.load())
+            , samples_(other.samples_)
+            , rejectedSamples_(other.rejectedSamples_)
         {
         }
         
@@ -448,6 +461,10 @@ namespace mpl {
 
         int samples() const {
             return samples_;
+        }
+
+        int rejectedSamples() const {
+            return rejectedSamples_;
         }
 
         void setGoalBias(Distance d) {
@@ -647,12 +664,13 @@ namespace mpl {
                 }
                 addSample(planner, planner.scenario_.randomSample(rng_), false);
             } else {
-                State q;
-                do {
+                State q = planner.scenario_.randomSample(rng_);
+                while (s->pathCost() <
+                       planner.distance(planner.start_->state(), q) +
+                       planner.distance(q, s->node()->state())) {
+                    ++rejectedSamples_;
                     q = planner.scenario_.randomSample(rng_);
-                } while (s->pathCost() <
-                         planner.distance(planner.start_->state(), q) +
-                         planner.distance(q, s->node()->state()));
+                }
 
                 addSample(planner, q, false);
             }

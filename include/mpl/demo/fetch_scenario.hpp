@@ -35,6 +35,15 @@ namespace mpl::demo {
 
         S invStepSize_;
 
+        // Scaling applied to the motion planning nearest-neighbors.
+        // Since we're computing in L^p space, instead of SO(2), we
+        // can apply this scale to make motions involving the torso
+        // and shoulder joints more expensive.
+        static const State& scale() {
+            static State s = (State() << 10, 4, 2, 1, 1, 1, 1, 1).finished();
+            return s;
+        }
+
     public:
         FetchScenario(
             const Frame& envFrame,
@@ -59,6 +68,10 @@ namespace mpl::demo {
 
         const Distance maxSteering() const {
             return 0.52;
+        }
+
+        static State scale(const State& q) {
+            return q.cwiseProduct(scale());
         }
 
         template <class RNG>
