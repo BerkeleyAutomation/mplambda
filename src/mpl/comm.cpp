@@ -111,6 +111,10 @@ bool mpl::Comm::finishConnect() {
         return false;
     }
 
+    // nothing changed on the descriptor
+    if (pfd.revents == 0)
+        return false;
+    
     if (pfd.revents & (POLLHUP | POLLERR)) {
         JI_LOG(WARN) << "connection failed, trying next address";
         connectAddr_ = connectAddr_->ai_next;
@@ -138,9 +142,9 @@ void mpl::Comm::handle(packet::Done&&) {
 }
 
 void mpl::Comm::sendDone() {
-    if (socket_ == -1)
+    if (socket_ == -1 || state_ != CONNECTED)
         return;
-    
+
     int nonBlocking = 0;
     if (::ioctl(socket_, FIONBIO, reinterpret_cast<char*>(&nonBlocking)) == -1)
         JI_LOG(INFO) << "set blocking failed (" << errno << ")";

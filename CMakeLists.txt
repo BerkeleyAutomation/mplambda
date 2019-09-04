@@ -40,11 +40,32 @@ endif()
 link_directories(${FCL_LIBRARY_DIRS} ${ASSIMP_LIBRARY_DIRS})
 include_directories(include ../nigh/src ${FCL_INCLUDE_DIRS} ${ASSIMP_INCLUDE_DIRS})
 
+file(COPY ${CMAKE_CURRENT_SOURCE_DIR}/resources/AUTOLAB.dae
+     DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/resources)
+file(GLOB SE3RSRC
+     "resources/se3/Twistycool*.dae" "resources/se3/alpha*.dae"
+     "resources/se3/Apartment*.dae" "resources/se3/cubicles*.dae"
+     "resources/se3/Home*.dae" "resources/se3/Easy*.dae")
+file(COPY ${SE3RSRC} DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/resources/se3)
+
+
 if (${APPLE})
 else ()
+    find_package(aws-lambda-runtime REQUIRED)
+    find_package(AWSSDK COMPONENTS s3)
     add_executable(mpl_lambda_aws src/mpl_lambda_aws.cpp src/mpl/demo/lambda_common.cpp src/mpl/comm.cpp src/mpl/write_queue.cpp src/mpl/demo/app_options.cpp)
-  target_link_libraries(mpl_lambda_aws Eigen3::Eigen Threads::Threads ${ASSIMP_LIBRARIES} ${FCL_LIBRARIES} ${CCD_LIBRARIES} AWS::aws-lambda-runtime)
+    target_link_libraries(mpl_lambda_aws PUBLIC Eigen3::Eigen Threads::Threads ${ASSIMP_LIBRARIES} ${FCL_LIBRARIES} ${CCD_LIBRARIES} AWS::aws-lambda-runtime ${AWSSDK_LINK_LIBRARIES})
+    
+    # the following line adds "aws-lambda-package-mpl_lambda_aws" as a
+    # target which creates a .zip file with everything we need to
+    # upload a function to aws.
     aws_lambda_package_target(mpl_lambda_aws)
+
+    # this is the command to run:
+    add_custom_target(mpl_lambda_aws_zip
+    	COMMAND zip -ur9 mpl_lambda_aws.zip resources
+    	DEPENDS aws-lambda-package-mpl_lambda_aws)
+
 endif()
 
 add_executable(mpl_lambda_pseudo src/mpl_lambda_pseudo.cpp src/mpl/demo/lambda_common.cpp src/mpl/comm.cpp src/mpl/write_queue.cpp src/mpl/demo/app_options.cpp)
@@ -54,13 +75,6 @@ add_executable(mpl_coordinator src/mpl_coordinator.cpp src/mpl/write_queue.cpp)
 # target_link_libraries(mpl_coordinator Threads::Threads)
 
 add_executable(mpl_robot src/mpl_robot.cpp src/mpl/write_queue.cpp src/mpl/demo/app_options.cpp)
+
 target_link_libraries(mpl_robot Eigen3::Eigen Threads::Threads ${ASSIMP_LIBRARIES} ${FCL_LIBRARIES} ${CCD_LIBRARIES})
 
-add_executable(mpl_fetch src/mpl_fetch.cpp src/mpl/write_queue.cpp src/mpl/demo/app_options.cpp)
-target_link_libraries(mpl_fetch Eigen3::Eigen Threads::Threads ${ASSIMP_LIBRARIES} ${FCL_LIBRARIES} ${CCD_LIBRARIES})
-
-#add_executable(${PROJECT_NAME} "main.cpp")
-#target_link_libraries(${PROJECT_NAME} PUBLIC AWS::aws-lambda-runtime)
-#aws_lambda_package_target(${PROJECT_NAME})
-
-add_subdirectory(test)
