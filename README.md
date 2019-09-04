@@ -125,3 +125,71 @@ In a *separate* window, run the robot client command with a test problem from OM
 ```console
 $ ./mpl_robot --coordinator=localhost --start=0,0,0,1,270,160,-200 --goal=0,0,0,1,270,160,-400 --min=53.46,-21.25,-476.86 --max=402.96,269.25,-91.0 --algorithm=rrt --env Twistycool_env.dae --robot Twistycool_robot.dae 
 ```
+
+# AWS: Creating and Using the Lambda
+Resource: https://aws.amazon.com/blogs/compute/introducing-the-c-lambda-runtime/. This was used to setup the framework (install packages, linking, etc.). We use `PROJECT_NAME` of `mpl_lambda_aws` for this README. Instructions for the trust policy are below. Below will pickup once `mpl_lambda_aws.zip` exists.
+
+**Trust Policy**
+
+While this is found at the resource, stating the method we used.
+
+Within your build directory, ensure `trust-policy.json ` exists. If it does not, create the following JSON file for the trust policy and name it `trust-policy.json`.
+```code
+{
+ "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Principal": {
+        "Service": ["lambda.amazonaws.com"]
+      },
+      "Action": "sts:AssumeRole"
+    }
+  ] 
+}
+```
+Now, from the build directory, run:
+```console
+$ aws iam create-role \
+--role-name lambda-cpp-demo \
+--assume-role-policy-document file://trust-policy.json
+```
+
+This should output JSON that contains the newly created IAM role information. Make sure to note down the “Arn” value from that JSON. You need it later. The Arn looks like the following:
+```code
+“Arn”: “arn:aws:iam::<account_id>:role/lambda-cpp-demo”
+```
+
+**The Lambda Function**
+
+To **generat the zip file**, after building and making, call
+```console
+$ make mpl_lambda_aws_zip
+```
+within the build directory. This will generate the zip and add the needed resource files. 
+
+
+To initially **create** the Lambda, run:
+
+```console
+$ aws lambda create-function \
+--function-name mpl_lambda_aws_test \
+--role arn:aws:iam::788532905224:role/mplambda_test \
+--runtime provided \
+--timeout 60 \
+--memory-size 256 \
+--handler mpl_lambda_aws \
+--zip-file fileb://mpl_lambda_aws.zip
+```
+
+To **update** the Lambda, run:
+```console
+$ aws lambda update-function-code --function-name mpl_lambda_aws_test --zip-file fileb://mpl_lambda_aws.zip
+```
+
+To **invoke** the Lambda, run:
+```console
+$aws lambda invoke --function-name mpl_lambda_aws_test --payload '{"scenario":"se3", "coordinator":"35.165.206.179", "start":"0,0,0,1,270,160,-200", "goal":"0,0,0,1,270,160,-400", "min":"53.46,-21.25,-476.86", "max":"402.96,269.25,-91.0", "algorithm":"rrt", "env":"resources/se3/Twistycool_env.dae", "robot":"resources/se3/Twistycool_robot.dae", "envFrame":""}' output_test.txt
+```
+This is a hardcoded example for testing.
+
