@@ -187,9 +187,16 @@ To **update** the Lambda, run:
 $ aws lambda update-function-code --function-name mpl_lambda_aws_test --zip-file fileb://mpl_lambda_aws.zip
 ```
 
-To **invoke** the Lambda, run:
+To **invoke** a test run of the Lambda, run:
 ```console
-$aws lambda invoke --function-name mpl_lambda_aws_test --payload '{"scenario":"se3", "coordinator":"35.165.206.179", "start":"0,0,0,1,270,160,-200", "goal":"0,0,0,1,270,160,-400", "min":"53.46,-21.25,-476.86", "max":"402.96,269.25,-91.0", "algorithm":"rrt", "env":"resources/se3/Twistycool_env.dae", "robot":"resources/se3/Twistycool_robot.dae", "envFrame":""}' output_test.txt
+$ ./mpl_lambda_invoke
 ```
 This is a hardcoded example for testing.
+
+To **invoke** the Lambda with your own parameters, replace relevant data and run:
+
+```console
+$ aws lambda invoke --function-name mpl_lambda_aws_test --payload '{"scenario":"se3", "coordinator":"35.165.206.179", "start":"0,0,0,1,270,160,-200", "goal":"0,0,0,1,270,160,-400", "min":"53.46,-21.25,-476.86", "max":"402.96,269.25,-91.0", "algorithm":"rrt", "env":"resources/se3/Twistycool_env.dae", "robot":"resources/se3/Twistycool_robot.dae", "envFrame":""}' output.txt
+```
+
 
