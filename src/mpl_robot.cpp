@@ -101,8 +101,12 @@ namespace mpl {
         }
 
     public:
-        void sendProblem(int argc, char *argv[]) {
-            writeQueue_.push_back(packet::Problem(argc, argv));
+        // void sendProblem(int argc, char *argv[]) {
+        //     writeQueue_.push_back(packet::Problem(argc, argv));
+        // }
+
+        void sendProblem(const demo::AppOptions& options) {
+            writeQueue_.push_back(options.toProblemPacket());
         }
 
         void loop() {
@@ -133,29 +137,30 @@ int main(int argc, char *argv[]) try {
     using Scenario = mpl::demo::SE3RigidBodyScenario<S>;
     using State = typename Scenario::State;
     using Bound = typename Scenario::Bound;
-    // mpl::demo::AppOptions options(argc, argv);
+    mpl::demo::AppOptions options(argc, argv);
 
-    static const char opt[] = "--coordinator";
+    // static const char opt[] = "--coordinator";
 
-    std::string coordinator;
+    // std::string coordinator;
     
-    for (int i=1 ; i<argc ; ++i) {
-        char *arg = argv[i];
-        if (std::strncmp(opt, arg, sizeof(opt)-1) == 0) {
-            if (arg[sizeof(opt)-1] == '=')
-                coordinator = arg+sizeof(opt);
-            else if (arg[sizeof(opt)-1] == '\0' && i+1<argc)
-                coordinator = argv[++i];
-        }
-    }
+    // for (int i=1 ; i<argc ; ++i) {
+    //     char *arg = argv[i];
+    //     if (std::strncmp(opt, arg, sizeof(opt)-1) == 0) {
+    //         if (arg[sizeof(opt)-1] == '=')
+    //             coordinator = arg+sizeof(opt);
+    //         else if (arg[sizeof(opt)-1] == '\0' && i+1<argc)
+    //             coordinator = argv[++i];
+    //     }
+    // }
 
-    if (coordinator.empty())
-        throw std::invalid_argument("--coordinator is required");
-    
+    // if (coordinator.empty())
+    //     throw std::invalid_argument("--coordinator is required");
+
     mpl::RobotClient robot;
     
-    robot.connect(coordinator);
-    robot.sendProblem(argc, argv);
+    robot.connect(options.coordinator());
+    // robot.sendProblem(argc, argv);
+    robot.sendProblem(options);
     robot.loop();
 
     return EXIT_SUCCESS;

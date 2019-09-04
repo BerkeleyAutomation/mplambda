@@ -11,7 +11,7 @@ namespace mpl::packet {
     using Size = std::uint32_t;
 
     // hexdump -n 4 -e '"0x" 1 "%08x" "\n"' /dev/urandom 
-    static constexpr Type PROBLEM = 0x8179e3ee;
+    static constexpr Type PROBLEM = 0x8179e3ef;
     static constexpr Type HELLO = 0x3864caca;
     static constexpr Type PATH_SE3 = 0xa9cb6e7d;
     static constexpr Type PATH_RVF = 0xb10b0c45;
@@ -43,10 +43,15 @@ namespace mpl::packet {
         std::vector<std::string> args_;
 
     public:
-        Problem(int argc, char* argv[]) {
-            args_.reserve(argc-1);
-            for (int i=1 ; i<argc ; ++i)
-                args_.push_back(argv[i]);
+        // Problem(int argc, char* argv[]) {
+        //     args_.reserve(argc-1);
+        //     for (int i=1 ; i<argc ; ++i)
+        //         args_.push_back(argv[i]);
+        // }
+
+        Problem(std::vector<std::string>&& args)
+            : args_(std::move(args))
+        {
         }
 
         inline Problem(Type, BufferView buf) {

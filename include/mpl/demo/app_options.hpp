@@ -5,6 +5,7 @@
 #include <string>
 #include <optional>
 #include <Eigen/Dense>
+#include "../packet.hpp"
 
 namespace mpl::demo {
     template <class T>
@@ -145,6 +146,8 @@ namespace mpl::demo {
     public:
         inline AppOptions() {}
         AppOptions(int argc, char* argv[]);
+
+        packet::Problem toProblemPacket() const;
 
         const std::string& scenario(bool required = true) const {
             if (required && scenario_.empty())

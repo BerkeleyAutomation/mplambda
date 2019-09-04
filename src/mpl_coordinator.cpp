@@ -286,36 +286,29 @@ std::pair<int, int> mpl::launchLambda(std::uint64_t pId, packet::Problem& prob) 
     
     std::string path = "./mpl_lambda_pseudo";
 
-    std::string groupId = std::to_string(pId);
+    std::ostringstream command;
+    // use a vector of string to make sure we have valid pointers to
+    // strings for argv
+    std::vector<std::string> args;
+    args.push_back(path); // argv[0] needs to be the program name
+    args.push_back("-I"); // then add the group identifier
+    args.push_back(std::to_string(pId));
+    for (std::size_t i=0 ; i+1<prob.args().size() ; i+=2)
+        args.push_back("--" + prob.args()[i] + "=" + prob.args()[i+1]);
 
+    // build the argv char* array
     std::vector<const char*> argv;
-    argv.reserve(prob.args().size()+1);
-
-    // argv[0] is the program name
-    argv.push_back(path.c_str());
-
-    // need to add the group identifier
-    argv.push_back("-I");
-    argv.push_back(groupId.c_str());
-
-    std::ostringstream args;
-    args << path << " -I " << groupId;
-    
-    for (auto& arg : prob.args()) {
+    argv.reserve(args.size() + 1);
+    for (auto& arg : args) {
+        command << " " << arg;
         argv.push_back(arg.c_str());
-        args << ' ' << argv.back();
     }
     argv.push_back(nullptr); // <-- required terminator
     
     char file[20];
     snprintf(file, sizeof(file), "lambda-%04d.out", lambdaId);
     
-    // JI_LOG(TRACE) << "RUNNING Lambda: " <<
-    //     "./mpl_lambda"
-
-    // for (int i=0 ; argv[i] ; ++i)
-    //     args << ' ' << argv[i];
-    JI_LOG(TRACE) << "Running lambda:" << args.str();
+    JI_LOG(TRACE) << "Running " << file << ":" << command.str();
     
     int fd = ::open(file, O_RDWR | O_CREAT | O_TRUNC, S_IRUSR | S_IWUSR);
     dup2(fd, 1); // make stdout write to file

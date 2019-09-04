@@ -131,3 +131,31 @@ mpl::demo::AppOptions::AppOptions(int argc, char *argv[]) {
     }
     
 }
+
+static void put(std::vector<std::string>& args, const std::string& key, const std::string& value) {
+    if (!value.empty()) {
+        args.push_back(key);
+        args.push_back(value);
+    }
+}
+
+mpl::packet::Problem mpl::demo::AppOptions::toProblemPacket() const {
+    std::vector<std::string> args;
+    args.reserve(26);
+    put(args, "scenario", scenario());
+    put(args, "algorithm", algorithm());
+    put(args, "coordinator", coordinator());
+    put(args, "time-limit", std::to_string(timeLimit_));
+    put(args, "check-resolution", std::to_string(checkResolution_));
+    put(args, "env", env_);
+    put(args, "env-frame", envFrame_);
+    put(args, "robot", robot_);
+    put(args, "start", start_);
+    put(args, "goal", goal_);
+    put(args, "goal-radius", goalRadius_);
+    put(args, "min", min_);
+    put(args, "max", max_);
+    // TODO: args.push_back("single-precision");
+    return { std::move(args) };
+}
+
