@@ -150,7 +150,6 @@ mpl::packet::Problem mpl::demo::AppOptions::toProblemPacket() const {
     std::vector<std::string> args;
     args.reserve(26);
     put(args, "scenario", scenario());
-    put(args, "algorithm", algorithm());
     put(args, "coordinator", coordinator());
     put(args, "time-limit", std::to_string(timeLimit_));
     put(args, "check-resolution", std::to_string(checkResolution_));
@@ -163,6 +162,16 @@ mpl::packet::Problem mpl::demo::AppOptions::toProblemPacket() const {
     put(args, "min", min_);
     put(args, "max", max_);
     // TODO: args.push_back("single-precision");
-    return mpl::packet::Problem(jobs_, std::move(args));
+
+    std::uint8_t alg;
+    if ("rrt" == algorithm_) {
+        alg = 'r';
+    } else if ("cforest" == algorithm_) {
+        alg = 'c';
+    } else {
+        throw std::invalid_argument("bad algorithm");
+    }
+    
+    return mpl::packet::Problem(jobs_, alg, std::move(args));
 }
 

@@ -166,7 +166,7 @@ namespace mpl {
 
         void launchLambdas(ID groupId, packet::Problem&& prob);
         
-        Group* createGroup(Connection* initiator);
+        Group* createGroup(Connection* initiator, std::uint8_t algorithm);
         Group* addToGroup(ID id, Connection* conn);
         void done(Group* group, Connection* conn);
         
@@ -176,12 +176,14 @@ namespace mpl {
 
     class Coordinator::GroupData {
         Connection* initiator_;
+        std::uint8_t algorithm_;
         bool done_{false};
         std::list<Connection*> connections_;
         
     public:
-        GroupData(Connection* initiator)
+        GroupData(Connection* initiator, std::uint8_t algorithm)
             : initiator_(initiator)
+            , algorithm_(algorithm)
         {
         }
 
@@ -191,6 +193,10 @@ namespace mpl {
 
         void done() {
             done_ = true;
+        }
+
+        std::uint8_t algorithm() const {
+            return algorithm_;
         }
 
         Connection* initiator() {
@@ -268,7 +274,7 @@ namespace mpl {
             if (group_)
                 coordinator_.done(group_, this);
             
-            group_ = coordinator_.createGroup(this);
+            group_ = coordinator_.createGroup(this, pkt.algorithm());
             coordinator_.launchLambdas(group_->first, std::move(pkt));
         }
 
@@ -280,7 +286,11 @@ namespace mpl {
 
             if (group_ == nullptr) {
                 JI_LOG(WARN) << "got PATH without active group";
+            } else if (group_->second.algorithm() == 'r') {
+                // for RRT we only send the path to the initiator
+                group_->second.initiator()->write(std::move(pkt));
             } else {
+                // for C-FOREST we send broadcast to path
                 coordinator_.broadcast(std::move(pkt), group_, this);
             }
         }
@@ -367,6 +377,7 @@ void mpl::Coordinator::launchAWSLambda(std::uint64_t pId, packet::Problem& prob)
 
     std::string pIdStr = std::to_string(pId);
     jsonPayload.WithString("problem-id", Aws::String(pIdStr.c_str(), pIdStr.size()));
+    jsonPayload.WithString("algorithm", prob.algorithm() == 'r' ? "rrt" : "cforest");
     for (std::size_t i=0 ; i+1<prob.args().size() ; i+=2) {
 	const std::string& key = prob.args()[i];
 	const std::string& val = prob.args()[i+1];
@@ -431,12 +442,12 @@ std::pair<int, int> mpl::Coordinator::launchPseudoLambda(std::uint64_t pId, pack
     std::vector<std::string> args;
 
     if (lambdaType_ == LAMBDA_PSEUDO) {
-	args.reserve(prob.args().size() + 4);
+	args.reserve(prob.args().size() + 6);
 	
 	program = "./mpl_lambda_pseudo";
 	args.push_back(program); // argv[0] needs to be the program name
     } else {
-	args.reserve(prob.args().size() + 8);
+	args.reserve(prob.args().size() + 10);
 	program = "ssh";
 	args.push_back(program);
 	if (!sshIdentity_.empty()) {
@@ -450,6 +461,8 @@ std::pair<int, int> mpl::Coordinator::launchPseudoLambda(std::uint64_t pId, pack
 
     args.push_back("-I"); // then add the group identifier
     args.push_back(std::to_string(pId));
+    args.push_back("--algorithm");
+    args.push_back(prob.algorithm() == 'r' ? "rrt" : "cforest");
     for (std::size_t i=0 ; i+1<prob.args().size() ; i+=2)
         args.push_back("--" + prob.args()[i] + "=" + prob.args()[i+1]);
 
@@ -480,8 +493,11 @@ std::pair<int, int> mpl::Coordinator::launchPseudoLambda(std::uint64_t pId, pack
     throw syserr("exec");
 }
 
-auto mpl::Coordinator::createGroup(Connection* initiator) -> Group* {
-    auto [ it, inserted ] = groups_.emplace(nextGroupId_++, initiator);
+auto mpl::Coordinator::createGroup(Connection* initiator, std::uint8_t algorithm) -> Group* {
+    auto [ it, inserted ] = groups_.emplace(
+        std::piecewise_construct,
+        std::forward_as_tuple(nextGroupId_++),
+        std::forward_as_tuple(initiator, algorithm));
     assert(inserted);
     JI_LOG(INFO) << "starting new group " << it->first;
     return &*it;

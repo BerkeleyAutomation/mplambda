@@ -28,6 +28,7 @@ fi
     --scenario fetch \
     --algorithm cforest \
     --coordinator "$COORDINATOR" \
+    --jobs 10 \
     --env resources/AUTOLAB.dae \
     --env-frame=0.57,-0.90,0.00,0,0,-$PI_2 \
     --goal=-1.07,0.16,0.88,0,0,0 \
