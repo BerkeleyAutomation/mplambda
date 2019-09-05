@@ -17,7 +17,12 @@
 #include <getopt.h>
 
 #if HAS_AWS_SDK
-
+#include <aws/lambda-runtime/runtime.h>
+#include <aws/core/Aws.h>
+#include <aws/core/utils/Outcome.h>
+#include <aws/lambda/LambdaClient.h>
+#include <aws/lambda/model/InvokeRequest.h>
+#include <aws/core/utils/json/JsonSerializer.h>
 #endif
 
 namespace mpl {
@@ -35,8 +40,10 @@ namespace mpl {
 
 	int port_{0x415E};
         int listen_{-1};
+	
 	std::string sshIdentity_;
 	std::vector<std::string> sshServers_;
+	unsigned sshServerNo_{0};
 
 	LambdaType lambdaType_{LAMBDA_PSEUDO};
 	
@@ -51,9 +58,15 @@ namespace mpl {
         std::list<std::pair<int, int>> childProcesses_;
         std::map<ID, GroupData> groups_;
 
+#if HAS_AWS_SDK
+	static constexpr const char* ALLOCATION_TAG = "mplLambdaAWS";
+        std::shared_ptr<Aws::Lambda::LambdaClient> lambdaClient_;
+#endif
+
 	std::pair<int, int> launchPseudoLambda(std::uint64_t pId, packet::Problem& prob);
-	static void launchAWSLambda(std::uint64_t pId, packet::Problem& prob);
-	static void usage();
+	void launchAWSLambda(std::uint64_t pId, packet::Problem& prob);
+	
+	static void usage(const char*);
     public:
 	Coordinator(int argc, char *argv[]) {
 	    static struct option longopts[] = {
@@ -64,7 +77,7 @@ namespace mpl {
 		{ NULL, 0, NULL, 0 }
 	    };
 
-	    for (int ch ; (ch = ::getopt_long(argc, argv, "p:l:s:i:", longopts, NULL) != -1) ; ) {
+	    for (int ch ; (ch = ::getopt_long(argc, argv, "p:l:s:i:", longopts, NULL)) != -1 ; ) {
 		char *endp;
 		switch (ch) {
 		case 'p':
@@ -80,6 +93,7 @@ namespace mpl {
 			lambdaType_ = LAMBDA_PSEUDO;
 		    else if (std::strcmp("ssh", optarg) == 0)
 			lambdaType_ = LAMBDA_SSH;
+		    else
 			throw std::invalid_argument("bad lambda type");
 		    break;
 		case 'i':
@@ -89,14 +103,22 @@ namespace mpl {
 		    sshServers_.push_back(optarg);
 		    break;
 		default:
-		    throw std::invalid_argument("see above");
+		    usage(argv[0]);
+		    throw std::invalid_argument("see above: " + std::to_string(ch));
 		}
 	    }
 	}
 
 	~Coordinator() {
             if (listen_ != -1 && !::close(listen_))
-                JI_LOG(WARN) << "failed to close listening socket";                
+                JI_LOG(WARN) << "failed to close listening socket";
+	    
+#if HAS_AWS_SDK
+	    if (lambdaType_ == LAMBDA_AWS) {
+		Aws::SDKOptions options;
+		Aws::ShutdownAPI(options);
+	    }
+#endif
         }
 
 	void start() {
@@ -123,6 +145,17 @@ namespace mpl {
             
             if (::listen(listen_, 5) == -1)
                 throw syserr("listen()");
+
+#if HAS_AWS_SDK
+	    if (lambdaType_ == LAMBDA_AWS) {
+		JI_LOG(INFO) << "initializing lambda client";
+		Aws::SDKOptions options;
+		Aws::InitAPI(options);
+		Aws::Client::ClientConfiguration clientConfig;
+		clientConfig.region = "us-west-2";
+		lambdaClient_ = Aws::MakeShared<Aws::Lambda::LambdaClient>(ALLOCATION_TAG, clientConfig);
+	    }
+#endif
         }
         
         int accept(struct sockaddr *addr, socklen_t * addrLen) {
@@ -311,11 +344,56 @@ namespace mpl {
     }
 }
 
+void mpl::Coordinator::usage(const char *argv0) {
+    std::clog << "Usage: " << argv0 << "[options]\n"
+	"Options:\n"
+	" -p, --port=PORT          port on which to listen for lambdas\n"
+	" -l, --lambda-type=TYPE   type of lambda to invoke (pseudo, aws, ssh)\n"
+	" -s, -ssh=SERVER          adds a server to the list of servers to round-robin for ssh\n"
+	"                          These can be `user@hostname` or just `hostname`.\n"
+	"                          (use -s multiple times to add multiple servers)\n"
+	" -i IDENTITY              ssh identity file to use"
+	      << std::endl;
+}
+
 void mpl::Coordinator::launchAWSLambda(std::uint64_t pId, packet::Problem& prob) {
 #if !HAS_AWS_SDK
     throw std::invalid_argument("AWS SDK is not available");
 #else
+    Aws::Lambda::Model::InvokeRequest invokeRequest;
+    invokeRequest.SetFunctionName("mpl_lambda_aws_test");
+    invokeRequest.SetInvocationType(Aws::Lambda::Model::InvocationType::Event);
+    std::shared_ptr<Aws::IOStream> payload = Aws::MakeShared<Aws::StringStream>("PayloadData");
+    Aws::Utils::Json::JsonValue jsonPayload;
 
+    std::string pIdStr = std::to_string(pId);
+    jsonPayload.WithString("problem-id", Aws::String(pIdStr.c_str(), pIdStr.size()));
+    for (std::size_t i=0 ; i+1<prob.args().size() ; i+=2) {
+	const std::string& key = prob.args()[i];
+	const std::string& val = prob.args()[i+1];
+	jsonPayload.WithString(
+	    Aws::String(key.c_str(), key.size()),
+	    Aws::String(val.c_str(), val.size()));
+    }
+
+    *payload << jsonPayload.View().WriteReadable();
+    invokeRequest.SetBody(payload);
+    invokeRequest.SetContentType("application/json");
+
+    auto outcome = lambdaClient_->Invoke(invokeRequest);
+    if (outcome.IsSuccess()) {
+        auto &result = outcome.GetResult();
+        Aws::IOStream& payload = result.GetPayload();
+        Aws::String functionResult;
+        std::getline(payload, functionResult);
+	JI_LOG(INFO) << "Lambda result: " << functionResult;
+    } else {
+        auto &error = outcome.GetError();
+	std::ostringstream msg;
+	msg << "name: '" << error.GetExceptionName() << "', message: '" << error.GetMessage() << "'";
+	throw std::runtime_error(msg.str());
+	    
+    }
 #endif
 }
 
@@ -347,18 +425,37 @@ std::pair<int, int> mpl::Coordinator::launchPseudoLambda(std::uint64_t pId, pack
     // child process
     // Eigen::IOFormat fmt(Eigen::FullPrecision, Eigen::DontAlignCols, ",", ",", "", "", "", "");
     
-    std::string path = "./mpl_lambda_pseudo";
-
-    std::ostringstream command;
+    std::string program;
+    
     // use a vector of string to make sure we have valid pointers to
     // strings for argv
     std::vector<std::string> args;
-    args.push_back(path); // argv[0] needs to be the program name
+
+    if (lambdaType_ == LAMBDA_PSEUDO) {
+	args.reserve(prob.args().size() + 4);
+	
+	program = "./mpl_lambda_pseudo";
+	args.push_back(program); // argv[0] needs to be the program name
+    } else {
+	args.reserve(prob.args().size() + 8);
+	program = "ssh";
+	args.push_back(program);
+	if (!sshIdentity_.empty()) {
+	    args.push_back("-i");
+	    args.push_back(sshIdentity_);
+	}
+	// round-robin through server list
+	args.push_back(sshServers_[sshServerNo_++ % sshServers_.size()]);
+	args.push_back("./projects/mplambda/build/Release/mpl_lambda_pseudo");
+    }
+
     args.push_back("-I"); // then add the group identifier
     args.push_back(std::to_string(pId));
     for (std::size_t i=0 ; i+1<prob.args().size() ; i+=2)
         args.push_back("--" + prob.args()[i] + "=" + prob.args()[i+1]);
 
+    // command is for debugging
+    std::ostringstream command;
     // build the argv char* array
     std::vector<const char*> argv;
     argv.reserve(args.size() + 1);
@@ -378,7 +475,7 @@ std::pair<int, int> mpl::Coordinator::launchPseudoLambda(std::uint64_t pId, pack
     dup2(fd, 2); // make stderr write to file
     close(fd); // close fd, dups remain open
     
-    execv(path.c_str(), const_cast<char*const*>(argv.data()));
+    execv(program.c_str(), const_cast<char*const*>(argv.data()));
     
     // if exec returns, then there was a problem
     throw syserr("exec");
@@ -447,18 +544,12 @@ void mpl::Coordinator::broadcast(T&& packet, Group* group, Connection* conn) {
 }
 
 void mpl::Coordinator::launchLambdas(ID groupId, packet::Problem&& prob, int nLambdas) {
-    switch (lambdaType_) {
-    case LAMBDA_PSEUDO:
-    case LAMBDA_SSH:
+    if (lambdaType_ != LAMBDA_AWS) {
 	for (int i=0 ; i<nLambdas ; ++i)
 	    childProcesses_.emplace_back(launchPseudoLambda(groupId, prob));
-	break;
-    case LAMBDA_AWS:
+    } else {
 	for (int i=0 ; i<nLambdas ; ++i)
 	    launchAWSLambda(groupId, prob);
-	break;
-    default:
-	abort();
     }
 }
 
@@ -552,6 +643,9 @@ int main(int argc, char *argv[]) try {
     coordinator.start();
     coordinator.loop();
     return EXIT_SUCCESS;
+} catch (const std::invalid_argument& ex) {
+    std::clog << ex.what() << std::endl;
+    return EXIT_FAILURE;
 } catch (const std::exception& ex) {
     std::clog << ex.what() << std::endl;
     return EXIT_FAILURE;
