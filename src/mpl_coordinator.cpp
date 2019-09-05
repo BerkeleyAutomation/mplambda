@@ -3,18 +3,19 @@
 #include <mpl/write_queue.hpp>
 #include <mpl/packet.hpp>
 #include <mpl/syserr.hpp>
+#include <chrono>
+#include <list>
+#include <map>
+#include <vector>
+#include <fcntl.h>
+#include <getopt.h>
 #include <netinet/ip.h>
 #include <netinet/tcp.h>
 #include <poll.h>
-#include <vector>
-#include <list>
-#include <map>
 #include <sys/socket.h>
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <unistd.h>
-#include <fcntl.h>
-#include <getopt.h>
 
 #if HAS_AWS_SDK
 #include <aws/lambda-runtime/runtime.h>
@@ -52,7 +53,7 @@ namespace mpl {
 
         using Group = std::pair<const ID, GroupData>;
         
-        ID nextGroupId_{1};
+        ID nextGroupId_{static_cast<ID>(std::chrono::system_clock::now().time_since_epoch().count())};
 
         std::list<Connection> connections_;
         std::list<std::pair<int, int>> childProcesses_;
@@ -156,6 +157,7 @@ namespace mpl {
 		lambdaClient_ = Aws::MakeShared<Aws::Lambda::LambdaClient>(ALLOCATION_TAG, clientConfig);
 	    }
 #endif
+            JI_LOG(INFO) << "next group ID will be " << nextGroupId_;
         }
         
         int accept(struct sockaddr *addr, socklen_t * addrLen) {
