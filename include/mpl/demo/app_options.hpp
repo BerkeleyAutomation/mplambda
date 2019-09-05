@@ -110,9 +110,13 @@ namespace mpl::demo {
     
     class AppOptions {
     public:
+        static constexpr unsigned long MAX_JOBS = 1000;
+        
         std::string scenario_;
         std::string algorithm_;
         std::string coordinator_;
+        unsigned long jobs_{4};
+        
         std::uint64_t problemId_;
 
         std::string env_;

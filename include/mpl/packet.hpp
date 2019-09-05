@@ -11,7 +11,7 @@ namespace mpl::packet {
     using Size = std::uint32_t;
 
     // hexdump -n 4 -e '"0x" 1 "%08x" "\n"' /dev/urandom 
-    static constexpr Type PROBLEM = 0x8179e3ef;
+    static constexpr Type PROBLEM = 0x8179e3f0;
     static constexpr Type HELLO = 0x3864caca;
     static constexpr Type PATH_SE3 = 0xa9cb6e7d;
     static constexpr Type PATH_RVF = 0xb10b0c45;
@@ -40,6 +40,7 @@ namespace mpl::packet {
         }
         
     private:
+        std::uint32_t jobs_;
         std::vector<std::string> args_;
 
     public:
@@ -49,27 +50,31 @@ namespace mpl::packet {
         //         args_.push_back(argv[i]);
         // }
 
-        Problem(std::vector<std::string>&& args)
-            : args_(std::move(args))
+        Problem(std::uint32_t jobs, std::vector<std::string>&& args)
+            : jobs_(jobs)
+            , args_(std::move(args))
         {
         }
 
-        inline Problem(Type, BufferView buf) {
+        inline Problem(Type, BufferView buf)
+            : jobs_(buf.get<std::uint32_t>())
+        {
             std::size_t n = buf.get<std::uint8_t>();
             args_.reserve(n);
-            for (std::size_t i=0 ; i<n ; ++i) {
-                std::size_t len = buf.get<std::uint8_t>();
-                args_.push_back(buf.getString(len));
-            }
+            for (std::size_t i=0 ; i<n ; ++i)
+                args_.push_back(buf.getString(buf.get<std::uint8_t>()));
         }
 
         inline operator Buffer () const {
-            Size size = buffer_size_v<Type> + buffer_size_v<Size> + args_.size() + 1;
+            Size size = buffer_size_v<Type> + buffer_size_v<Size> +
+                buffer_size_v<std::uint8_t> +
+                args_.size() + 1;
             for (const std::string& s : args_)
                 size += s.size();
             Buffer buf{size};
             buf.put(TYPE);
             buf.put(size);
+            buf.put(jobs_);
             buf.put(static_cast<std::uint8_t>(args_.size()));
             for (const std::string& s : args_) {
                 buf.put(static_cast<std::uint8_t>(s.size()));
@@ -77,6 +82,10 @@ namespace mpl::packet {
             }
             buf.flip();
             return buf;
+        }
+
+        std::uint32_t jobs() const {
+            return jobs_;
         }
 
         const std::vector<std::string>& args() const {

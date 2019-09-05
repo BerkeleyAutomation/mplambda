@@ -17,14 +17,21 @@ fi
 PI=3.141592653589793
 PI_2=1.570796326794897
 
+COORDINATOR="$1"
+
+if [ -z "$COORDINATOR" ] ; then
+    echo "please specify the coordinator's address"
+    exit 1
+fi
+
 ./mpl_robot \
     --scenario fetch \
     --algorithm cforest \
-    --coordinator localhost \
-    --env AUTOLAB.dae \
+    --coordinator "$COORDINATOR" \
+    --env resources/AUTOLAB.dae \
     --env-frame=0.57,-0.90,0.00,0,0,-$PI_2 \
     --goal=-1.07,0.16,0.88,0,0,0 \
     --goal-radius=0.01,0.01,0.01,0.01,0.01,$PI \
     --start=0.1,$PI_2,$PI_2,0,$PI_2,0,$PI_2,0 \
-    --time-limit 300 \
+    --time-limit 120 \
     --check-resolution 0.1

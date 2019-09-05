@@ -164,7 +164,7 @@ namespace mpl {
 
         void loop();
 
-        void launchLambdas(ID groupId, packet::Problem&& prob, int nLambdas);
+        void launchLambdas(ID groupId, packet::Problem&& prob);
         
         Group* createGroup(Connection* initiator);
         Group* addToGroup(ID id, Connection* conn);
@@ -269,8 +269,7 @@ namespace mpl {
                 coordinator_.done(group_, this);
             
             group_ = coordinator_.createGroup(this);
-            int nLambdas = 4;
-            coordinator_.launchLambdas(group_->first, std::move(pkt), nLambdas);
+            coordinator_.launchLambdas(group_->first, std::move(pkt));
         }
 
         template <class State>
@@ -543,12 +542,13 @@ void mpl::Coordinator::broadcast(T&& packet, Group* group, Connection* conn) {
             c->write(packet);
 }
 
-void mpl::Coordinator::launchLambdas(ID groupId, packet::Problem&& prob, int nLambdas) {
+void mpl::Coordinator::launchLambdas(ID groupId, packet::Problem&& prob) {
+    unsigned nLambdas = prob.jobs();
     if (lambdaType_ != LAMBDA_AWS) {
-	for (int i=0 ; i<nLambdas ; ++i)
+	for (unsigned i=0 ; i<nLambdas ; ++i)
 	    childProcesses_.emplace_back(launchPseudoLambda(groupId, prob));
     } else {
-	for (int i=0 ; i<nLambdas ; ++i)
+	for (unsigned i=0 ; i<nLambdas ; ++i)
 	    launchAWSLambda(groupId, prob);
     }
 }
