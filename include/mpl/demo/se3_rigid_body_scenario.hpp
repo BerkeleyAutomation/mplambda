@@ -12,7 +12,7 @@
 
 namespace mpl::demo {
     
-    template <class S, std::intmax_t so3weight = 1, std::intmax_t l2weight = 1>
+    template <class S, std::intmax_t so3weight = 50, std::intmax_t l2weight = 1>
     class SE3RigidBodyScenario {
     public:
         using Space = unc::robotics::nigh::SE3Space<S, so3weight, l2weight>;
