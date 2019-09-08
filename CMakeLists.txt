@@ -83,6 +83,9 @@ add_executable(mpl_lambda_pseudo src/mpl_lambda_pseudo.cpp src/mpl/demo/lambda_c
 target_link_libraries(mpl_lambda_pseudo Eigen3::Eigen Threads::Threads ${ASSIMP_LIBRARIES} ${FCL_LIBRARIES} ${CCD_LIBRARIES})
 
 add_executable(mpl_robot src/mpl_robot.cpp src/mpl/write_queue.cpp src/mpl/demo/app_options.cpp)
-
 target_link_libraries(mpl_robot Eigen3::Eigen Threads::Threads ${ASSIMP_LIBRARIES} ${FCL_LIBRARIES} ${CCD_LIBRARIES})
+
+add_executable(mpl_fetch src/mpl_fetch.cpp)
+target_link_libraries(mpl_fetch Eigen3::Eigen ${FCL_LIBRARIES} ${CCD_LIBRARIES})
+
 

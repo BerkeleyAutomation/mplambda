@@ -637,7 +637,7 @@ namespace mpl::demo {
             if (cc(geom, frame, "geom", &G.gripper_, tfGripperLink(), "gripper", req, res, report))
                 return true;
 
-            if (cc(geom, frame, "geom", &G.wristFlex_, tfWristFlexLink(), "wristFlex", req, res, report))
+            if (cc(geom, frame, "geom", &G.neck_, tfNeckLink(), "neck", req, res, report))
                 return true;
             
             if (cc(geom, frame, "geom", &G.head_, tfHeadLink(), "head", req, res, report))
@@ -658,18 +658,34 @@ namespace mpl::demo {
                     "vertices=24, radius=" << geom.radius << ", depth=" << geom.lz << ", "
                     "view_align=False, enter_editmode=False, location=("
                     << frame.translation().format(fmt) << "))";
-                bpy << "bpy.context.object.rotation_mode = 'AXIS_ANGLE'";
-                bpy << "bpy.context.object.rotation_axis_angle = ("
-                    << aa.angle() << ", " << aa.axis().format(fmt) << ")";
-                bpy << "bpy.context.object.name = \"" << name << "\"";
             }
+            if constexpr (std::is_same_v<fcl::Box<S>, Geom>)
+            {
+                bpy << "bpy.ops.mesh.primitive_cube_add(size=1.0, view_align=False, enter_editmode=False, location=(" << frame.translation().format(fmt) << "))";
+                bpy << "bpy.ops.transform.resize(value=(" << geom.side.format(fmt) << "))";
+                
+            }
+            bpy << "bpy.context.object.name = \"" << name << "\"";
+            bpy << "bpy.context.object.rotation_mode = 'AXIS_ANGLE'";
+            bpy << "bpy.context.object.rotation_axis_angle = ("
+                << aa.angle() << ", " << aa.axis().format(fmt) << ")";
         }
 
         template <class Char, class Traits>
         void toCollisionGeometryBlenderScript(BlenderPy<Char, Traits> bpy) const {
             const auto& G = collisionGeometry();
-            renderCG(bpy, G.forearmRoll_, tfForearmRollLink(), "forearmRoll");
+            renderCG(bpy, G.base_, tfBaseLink(), "base");
+            renderCG(bpy, G.torsoLift_, tfTorsoLiftLink(), "torsoLift");
+            renderCG(bpy, G.shoulderPan_, tfShoulderPanLink(), "shoulderPan");
+            renderCG(bpy, G.shoulderLift_, tfShoulderLiftLink(), "shoulderLift");
+            renderCG(bpy, G.upperarmRoll_, tfUpperarmRollLink(), "upperarmRoll");
             renderCG(bpy, G.elbowFlex_, tfElbowFlexLink(), "elbowFlex");
+            renderCG(bpy, G.forearmRoll_, tfForearmRollLink(), "forearmRoll");
+            renderCG(bpy, G.wristFlex_, tfWristFlexLink(), "wristFlex");
+            renderCG(bpy, G.wristRoll_, tfWristRollLink(), "wristRoll");
+            renderCG(bpy, G.gripper_, tfGripperLink(), "gripperLink");
+            renderCG(bpy, G.neck_, tfNeckLink(), "neck");
+            renderCG(bpy, G.head_, tfHeadLink(), "head");
         }
 
         template <class Char, class Traits>

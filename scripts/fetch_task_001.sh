@@ -28,8 +28,8 @@ fi
     --scenario fetch \
     --algorithm cforest \
     --coordinator "$COORDINATOR" \
-    --jobs 10 \
-    --env resources/AUTOLAB.dae \
+    --jobs 1 \
+    --env AUTOLAB.dae \
     --env-frame=0.57,-0.90,0.00,0,0,-$PI_2 \
     --goal=-1.07,0.16,0.88,0,0,0 \
     --goal-radius=0.01,0.01,0.01,0.01,0.01,$PI \

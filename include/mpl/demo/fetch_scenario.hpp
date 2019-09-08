@@ -16,7 +16,7 @@ namespace mpl::demo {
         using Frame = typename Robot::Frame;
         using Transform = Frame;
         using State = typename Robot::Config;
-        using Space = unc::robotics::nigh::LInfSpace<S, Robot::kDOF>;
+        using Space = unc::robotics::nigh::L1Space<S, Robot::kDOF>;
         using Distance = S;
         
         static_assert(std::is_same_v<State, typename Space::Type>, "odd that this wouldn't be the case");
