@@ -8,6 +8,7 @@
 #include <netdb.h>
 #include <getopt.h>
 #include <iostream>
+#include <chrono>
 #include <poll.h>
 
 namespace mpl {
@@ -133,10 +134,14 @@ namespace mpl {
 }
 
 int main(int argc, char *argv[]) try {
+    using Clock = std::chrono::steady_clock;
     using S = double;
     using Scenario = mpl::demo::SE3RigidBodyScenario<S>;
     using State = typename Scenario::State;
     using Bound = typename Scenario::Bound;
+
+    auto start = Clock::now();
+    
     mpl::demo::AppOptions options(argc, argv);
 
     // static const char opt[] = "--coordinator";
@@ -162,6 +167,8 @@ int main(int argc, char *argv[]) try {
     // robot.sendProblem(argc, argv);
     robot.sendProblem(options);
     robot.loop();
+
+    JI_LOG(INFO) << "robot total elapsed time: " << (Clock::now() - start);
 
     return EXIT_SUCCESS;
 } catch (const std::exception& ex) {
