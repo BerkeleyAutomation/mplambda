@@ -42,8 +42,8 @@ namespace mpl::demo {
     };
 
 
-    template <class T>
-    void sendPath(Comm& comm, T& solution) {
+    template <class T, class Rep, class Period>
+    void sendPath(Comm& comm, std::chrono::duration<Rep, Period> elapsed, T& solution) {
         using State = typename T::State;
         using Distance = typename T::Distance;
         
@@ -52,7 +52,7 @@ namespace mpl::demo {
             solution.visit([&] (const State& q) { path.push_back(q); });
             std::reverse(path.begin(), path.end());
             Distance cost = solution.cost();
-            comm.sendPath(cost, std::move(path));
+            comm.sendPath(cost, elapsed, std::move(path));
         }
     }
 
@@ -128,7 +128,7 @@ namespace mpl::demo {
                 
                 auto s = planner.solution();
                 if (s < solution) {
-                    sendPath(comm_, s);
+                    sendPath(comm_, Clock::now() - start, s);
                     solution = s;
                 }
                 
@@ -155,7 +155,7 @@ namespace mpl::demo {
             
         if (auto finalSolution = planner.solution()) {
             if (finalSolution != solution)
-                sendPath(comm_, finalSolution);
+                sendPath(comm_, Clock::now() - start, finalSolution);
             finalSolution.visit([] (const State& q) { JI_LOG(INFO) << "  " << q; });
         }
 

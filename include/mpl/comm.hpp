@@ -63,10 +63,10 @@ namespace mpl {
         template <class PathFn>
         void process(PathFn);
 
-        template <class S>
-        void sendPath(S cost, std::vector<std::tuple<Eigen::Quaternion<S>, Eigen::Matrix<S, 3, 1>>>&& path);
-        template <class S, int dim>
-        void sendPath(S cost, std::vector<Eigen::Matrix<S, dim, 1>>&& path);
+        template <class S, class Rep, class Period>
+        void sendPath(S cost, std::chrono::duration<Rep, Period> elapsed, std::vector<std::tuple<Eigen::Quaternion<S>, Eigen::Matrix<S, 3, 1>>>&& path);
+        template <class S, class Rep, class Period, int dim>
+        void sendPath(S cost, std::chrono::duration<Rep, Period> elapsed, std::vector<Eigen::Matrix<S, dim, 1>>&& path);
         
         void sendDone();
 
@@ -77,28 +77,32 @@ namespace mpl {
 
 }
 
-template <class S>
+template <class S, class Rep, class Period>
 void mpl::Comm::sendPath(
     S cost,
+    std::chrono::duration<Rep, Period> elapsed,
     std::vector<std::tuple<Eigen::Quaternion<S>, Eigen::Matrix<S, 3, 1>>>&& path)
 {
     if (socket_ == -1)
         return;
 
     using State = std::tuple<Eigen::Quaternion<S>, Eigen::Matrix<S, 3, 1>>;
-    writeQueue_.push_back(packet::Path<State>(cost, std::move(path)));
+    std::uint32_t elapsedMillis = std::chrono::duration_cast<std::chrono::milliseconds>(elapsed).count();
+    writeQueue_.push_back(packet::Path<State>(cost, elapsedMillis, std::move(path)));
 }
 
-template <class S, int dim>
+template <class S, class Rep, class Period, int dim>
 void mpl::Comm::sendPath(
     S cost,
+    std::chrono::duration<Rep, Period> elapsed,
     std::vector<Eigen::Matrix<S, dim, 1>>&& path)
 {
     if (socket_ == -1)
         return;
 
     using State = Eigen::Matrix<S, dim, 1>;
-    writeQueue_.push_back(packet::Path<State>(cost, std::move(path)));
+    std::uint32_t elapsedMillis = std::chrono::duration_cast<std::chrono::milliseconds>(elapsed).count();
+    writeQueue_.push_back(packet::Path<State>(cost, elapsedMillis, std::move(path)));
 }
     
 

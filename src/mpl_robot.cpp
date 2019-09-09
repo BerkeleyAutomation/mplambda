@@ -95,7 +95,7 @@ namespace mpl {
 
         template <class State>
         void process(packet::Path<State>&& pkt) {
-            JI_LOG(INFO) << "Recieved path cost = " << pkt.cost();
+            JI_LOG(INFO) << "Recieved path cost = " << pkt.cost() << ", elapsed millis = " << pkt.solveTimeMillis();
             for (auto& q : pkt.path())
                 JI_LOG(INFO) << "  " << q;
         }

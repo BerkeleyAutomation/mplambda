@@ -13,8 +13,8 @@ namespace mpl::packet {
     // hexdump -n 4 -e '"0x" 1 "%08x" "\n"' /dev/urandom 
     static constexpr Type PROBLEM = 0x8179e3f1;
     static constexpr Type HELLO = 0x3864caca;
-    static constexpr Type PATH_SE3 = 0xa9cb6e7d;
-    static constexpr Type PATH_RVF = 0xb10b0c45;
+    static constexpr Type PATH_SE3 = 0xa9db6e7d;
+    static constexpr Type PATH_RVF = 0xb11b0c45;
     static constexpr Type PATH_RVD = PATH_RVF + 0x100;
     static constexpr Type DONE = 0x6672e31a;
 
@@ -203,17 +203,20 @@ namespace mpl::packet {
         static constexpr std::size_t stateSize_ = buffer_size_v<State>;
 
         Scalar cost_;
+        std::uint32_t solveTimeMillis_;
         std::vector<State> path_;
 
     public:
-        explicit Path(Scalar cost, std::vector<State>&& path)
+        explicit Path(Scalar cost, std::uint32_t solveTimeMillis, std::vector<State>&& path)
             : cost_(cost)
+            , solveTimeMillis_(solveTimeMillis)
             , path_(std::move(path))
         {
         }
 
         inline Path(Type, BufferView buf)
             : cost_(buf.get<Scalar>())
+            , solveTimeMillis_(buf.get<std::uint32_t>())
         {
             if (buf.remaining() % stateSize_ != 0)
                 throw protocol_error("invalid path packet size: " + std::to_string(buf.remaining()));
@@ -227,11 +230,13 @@ namespace mpl::packet {
         inline operator Buffer () const {
             Size size = buffer_size_v<Type> + buffer_size_v<Size>
                 + buffer_size_v<Scalar>
+                + buffer_size_v<std::uint32_t>
                 + stateSize_ * path_.size();
             Buffer buf{size};
             buf.put(Base::TYPE);
             buf.put(size);
             buf.put(cost_);
+            buf.put(solveTimeMillis_);
             for (const State& q : path_)
                 buf.put(q);
             buf.flip();
@@ -240,6 +245,10 @@ namespace mpl::packet {
 
         Scalar cost() const {
             return cost_;
+        }
+
+        auto solveTimeMillis() const {
+            return solveTimeMillis_;
         }
 
         const std::vector<State>& path() const & {
