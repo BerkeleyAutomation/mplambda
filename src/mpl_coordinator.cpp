@@ -36,9 +36,45 @@ namespace mpl {
 	LAMBDA_SSH,
     };
 
-    class Coordinator {
-        using ID = std::uint64_t;
+    using ID = std::uint64_t;
 
+    class Connection;
+    
+    class GroupData {
+        Connection* initiator_;
+        std::uint8_t algorithm_;
+        bool done_{false};
+        std::list<Connection*> connections_;
+        
+    public:
+        GroupData(Connection* initiator, std::uint8_t algorithm)
+            : initiator_(initiator)
+            , algorithm_(algorithm)
+        {
+        }
+
+        bool isDone() const {
+            return done_;
+        }
+
+        void done() {
+            done_ = true;
+        }
+
+        std::uint8_t algorithm() const {
+            return algorithm_;
+        }
+
+        Connection* initiator() {
+            return initiator_;
+        }
+
+        auto& connections() {
+            return connections_;
+        }
+    };
+
+    class Coordinator {
 	int port_{0x415E};
         int listen_{-1};
 	
@@ -48,9 +84,6 @@ namespace mpl {
 
 	LambdaType lambdaType_{LAMBDA_PSEUDO};
 	
-        class GroupData;
-        class Connection;
-
         using Group = std::pair<const ID, GroupData>;
         
         ID nextGroupId_{static_cast<ID>(std::chrono::system_clock::now().time_since_epoch().count())};
@@ -178,41 +211,7 @@ namespace mpl {
         // void broadcast(T&& packet, Group* group, Connection* conn);
     };
 
-    class Coordinator::GroupData {
-        Connection* initiator_;
-        std::uint8_t algorithm_;
-        bool done_{false};
-        std::list<Connection*> connections_;
-        
-    public:
-        GroupData(Connection* initiator, std::uint8_t algorithm)
-            : initiator_(initiator)
-            , algorithm_(algorithm)
-        {
-        }
-
-        bool isDone() const {
-            return done_;
-        }
-
-        void done() {
-            done_ = true;
-        }
-
-        std::uint8_t algorithm() const {
-            return algorithm_;
-        }
-
-        Connection* initiator() {
-            return initiator_;
-        }
-
-        auto& connections() {
-            return connections_;
-        }
-    };
-
-    class Coordinator::Connection {
+    class Connection {
         Coordinator& coordinator_;
         
         struct sockaddr_in addr_;
