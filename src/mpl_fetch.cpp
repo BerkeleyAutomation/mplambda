@@ -276,7 +276,7 @@ int main(int argc, char *argv[]) {
     //     robot.keyframeInsert(bpy, frame*20 + 1);
     // }
 
-    robot.toCollisionGeometryBlenderScript(bpy);
+    // robot.toCollisionGeometryBlenderScript(bpy);
     
     return EXIT_SUCCESS;
 }
