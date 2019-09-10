@@ -27,8 +27,8 @@ for ((i=1; i<=$INTERATIONS; ++i)); do
         --algorithm "$ALGORITHM" \
         --coordinator "$COORDINATOR" \
         --jobs $JOBS \
-        --env se3/Twistycool_env.dae \
-        --robot se3/Twistycool_robot.dae \
+        --env resources/se3/Twistycool_env.dae \
+        --robot resources/se3/Twistycool_robot.dae \
         --start 0,1,0,0,270,160,-200 \
         --goal 0,1,0,0,270,160,-400 \
         --min 53.46,-21.25,-476.86 \
