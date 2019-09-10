@@ -34,6 +34,6 @@ for ((i=1; i<=$INTERATIONS; ++i)); do
         --min 53.46,-21.25,-476.86 \
         --max 402.96,269.25,-91.0 \
         --time-limit 120 \
-        --check-resolution 0.1
+        --check-resolution 0.1 \
     > "${DIR}/$(printf "%03d.out" $i)" 2>&1
 done
