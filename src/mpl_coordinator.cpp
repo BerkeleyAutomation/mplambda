@@ -231,8 +231,10 @@ namespace mpl {
             if (n <= 0) {
                 // on error (-1) or connection close (0), send DONE to
                 // the group to which this connection is attached.
-                if (group_)
+                if (group_) {
                     coordinator_.done(group_, this);
+                    group_ = nullptr;
+                }
                 
                 return (n < 0) ? throw syserr("recv") : false;
             }
@@ -273,8 +275,10 @@ namespace mpl {
 
             // if this connection is connected to a group, send DONE
             // to that group before starting a new group.
-            if (group_)
+            if (group_) {
                 coordinator_.done(group_, this);
+                group_ = nullptr;
+            }
             
             group_ = coordinator_.createGroup(this, pkt.algorithm());
             coordinator_.launchLambdas(group_->first, std::move(pkt));
@@ -306,8 +310,10 @@ namespace mpl {
         }
         
         ~Connection() {
-            if (group_)
+            if (group_) {
                 coordinator_.done(group_, this);
+                group_ = nullptr;
+            }
             
             JI_LOG(TRACE) << "closing connection";
             if (socket_ != -1 && ::close(socket_) == -1)
