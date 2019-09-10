@@ -5,7 +5,7 @@
 #include <mpl/syserr.hpp>
 #include <chrono>
 #include <list>
-#include <map>
+#include <unordered_map>
 #include <vector>
 #include <fcntl.h>
 #include <getopt.h>
@@ -57,7 +57,7 @@ namespace mpl {
 
         std::list<Connection> connections_;
         std::list<std::pair<int, int>> childProcesses_;
-        std::map<ID, GroupData> groups_;
+        std::unordered_map<ID, GroupData> groups_;
 
 #if HAS_AWS_SDK
 	static constexpr const char* ALLOCATION_TAG = "mplLambdaAWS";
@@ -168,12 +168,14 @@ namespace mpl {
 
         void launchLambdas(ID groupId, packet::Problem&& prob);
         
-        Group* createGroup(Connection* initiator, std::uint8_t algorithm);
-        Group* addToGroup(ID id, Connection* conn);
-        void done(Group* group, Connection* conn);
-        
-        template <class T>
-        void broadcast(T&& packet, Group* group, Connection* conn);
+        ID createGroup(Connection* initiator, std::uint8_t algorithm);
+        ID addToGroup(ID id, Connection* conn);
+        void done(ID group, Connection* conn);
+
+        template <class State>
+        void gotPath(ID group, packet::Path<State>&& pkt, Connection* conn);
+        // template <class T>
+        // void broadcast(T&& packet, Group* group, Connection* conn);
     };
 
     class Coordinator::GroupData {
@@ -221,7 +223,8 @@ namespace mpl {
         Buffer rBuf_{1024*4};
         WriteQueue writeQueue_;
 
-        Group* group_{nullptr};
+        ID groupId_{0};
+        // Group* group_{nullptr};
 
         bool doRead() {
             assert(rBuf_.remaining() > 0); // we may need to grow the buffer
@@ -231,9 +234,9 @@ namespace mpl {
             if (n <= 0) {
                 // on error (-1) or connection close (0), send DONE to
                 // the group to which this connection is attached.
-                if (group_) {
-                    coordinator_.done(group_, this);
-                    group_ = nullptr;
+                if (groupId_) {
+                    coordinator_.done(groupId_, this);
+                    groupId_ = 0;
                 }
                 
                 return (n < 0) ? throw syserr("recv") : false;
@@ -253,20 +256,20 @@ namespace mpl {
 
         void process(packet::Hello&& pkt) {
             JI_LOG(INFO) << "got HELLO (id=" << pkt.id() << ")";
-            group_ = coordinator_.addToGroup(pkt.id(), this);
+            groupId_ = coordinator_.addToGroup(pkt.id(), this);
             // this is a possible sign that the group already ended
             // before this connection arrived.  Respond with DONE.
-            if (group_ == nullptr)
+            if (groupId_ == 0)
                 writeQueue_.push_back(packet::Done(pkt.id()));
         }
 
         void process(packet::Done&& pkt) {
             JI_LOG(INFO) << "got DONE (id=" << pkt.id() << ")";
-            if (group_ == nullptr || group_->first != pkt.id()) {
+            if (groupId_ == 0 || groupId_ != pkt.id()) {
                 JI_LOG(WARN) << "DONE group id mismatch";
             } else {
-                coordinator_.done(group_, this);
-                group_ = nullptr;
+                coordinator_.done(groupId_, this);
+                groupId_ = 0;
             }
         }
 
@@ -275,13 +278,13 @@ namespace mpl {
 
             // if this connection is connected to a group, send DONE
             // to that group before starting a new group.
-            if (group_) {
-                coordinator_.done(group_, this);
-                group_ = nullptr;
+            if (groupId_) {
+                coordinator_.done(groupId_, this);
+                groupId_ = 0;
             }
             
-            group_ = coordinator_.createGroup(this, pkt.algorithm());
-            coordinator_.launchLambdas(group_->first, std::move(pkt));
+            groupId_ = coordinator_.createGroup(this, pkt.algorithm());
+            coordinator_.launchLambdas(groupId_, std::move(pkt));
         }
 
         template <class State>
@@ -290,15 +293,18 @@ namespace mpl {
             for (auto& q : pkt.path())
                 JI_LOG(TRACE) << "  " << q;
 
-            if (group_ == nullptr) {
+            if (groupId_ == 0) {
                 JI_LOG(WARN) << "got PATH without active group";
-            } else if (group_->second.algorithm() == 'r') {
-                // for RRT we only send the path to the initiator
-                group_->second.initiator()->write(std::move(pkt));
             } else {
-                // for C-FOREST we send broadcast to path
-                coordinator_.broadcast(std::move(pkt), group_, this);
+                coordinator_.gotPath(groupId_, std::move(pkt), this);
             }
+            // if (group_->second.algorithm() == 'r') {
+            //     // for RRT we only send the path to the initiator
+            //     group_->second.initiator()->write(std::move(pkt));
+            // } else {
+            //     // for C-FOREST we send broadcast to path
+            //     coordinator_.broadcast(std::move(pkt), group_, this);
+            // }
         }
         
     public:
@@ -310,9 +316,9 @@ namespace mpl {
         }
         
         ~Connection() {
-            if (group_) {
-                coordinator_.done(group_, this);
-                group_ = nullptr;
+            if (groupId_) {
+                coordinator_.done(groupId_, this);
+                groupId_ = 0;
             }
             
             JI_LOG(TRACE) << "closing connection";
@@ -329,7 +335,7 @@ namespace mpl {
         }
 
         void degroup() {
-            group_ = nullptr;
+            groupId_ = 0;
         }
 
         template <class Packet>
@@ -501,26 +507,33 @@ std::pair<int, int> mpl::Coordinator::launchPseudoLambda(std::uint64_t pId, pack
     throw syserr("exec");
 }
 
-auto mpl::Coordinator::createGroup(Connection* initiator, std::uint8_t algorithm) -> Group* {
+auto mpl::Coordinator::createGroup(Connection* initiator, std::uint8_t algorithm) -> ID{
+    ID id = nextGroupId_++;
     auto [ it, inserted ] = groups_.emplace(
         std::piecewise_construct,
-        std::forward_as_tuple(nextGroupId_++),
+        std::forward_as_tuple(id),
         std::forward_as_tuple(initiator, algorithm));
     assert(inserted);
     JI_LOG(INFO) << "starting new group " << it->first;
-    return &*it;
+    return id;
 }
 
-auto mpl::Coordinator::addToGroup(ID id, Connection* conn) -> Group* {
+auto mpl::Coordinator::addToGroup(ID id, Connection* conn) -> ID {
     auto it = groups_.find(id);
     if (it == groups_.end() || it->second.isDone())
-        return nullptr;
+        return 0;
     
     it->second.connections().push_back(conn);
-    return &*it;
+    return it->first;
 }
 
-void mpl::Coordinator::done(Group* group, Connection* conn) {
+void mpl::Coordinator::done(ID groupID, Connection* conn) {
+    auto group = groups_.find(groupID);
+    if (group == groups_.end()) {
+        JI_LOG(WARN) << "bad group on DONE: " << groupID;
+        return;
+    }
+    
     auto& connections = group->second.connections();
 
     // when we get a DONE packet, broadcast DONE to all other
@@ -558,12 +571,22 @@ void mpl::Coordinator::done(Group* group, Connection* conn) {
     }
 }
 
-template <class T>
-void mpl::Coordinator::broadcast(T&& packet, Group* group, Connection* conn) {
-    group->second.initiator()->write(packet);
-    for (auto* c : group->second.connections())
-        if (conn != c)
-            c->write(packet);
+template <class State>
+void mpl::Coordinator::gotPath(ID groupID, packet::Path<State>&& packet, Connection* conn) {
+    auto it = groups_.find(groupID);
+    if (it == groups_.end()) {
+        JI_LOG(WARN) << "invalid group: " << groupID;
+        return;
+    }
+
+    it->second.initiator()->write(packet);
+    // for RRT, only send the path to the initiator (above)
+    if (it->second.algorithm() != 'r') {
+        // for C-FOREST send the path to everyton
+        for (auto* c : it->second.connections())
+            if (conn != c)
+                c->write(packet);
+    }
 }
 
 void mpl::Coordinator::launchLambdas(ID groupId, packet::Problem&& prob) {
