@@ -177,7 +177,7 @@ namespace mpl {
 
             JI_LOG(INFO) << "listening on port: " << ntohs(addr.sin_port);
             
-            if (::listen(listen_, 5) == -1)
+            if (::listen(listen_, 100) == -1)
                 throw syserr("listen()");
 
 #if HAS_AWS_SDK
