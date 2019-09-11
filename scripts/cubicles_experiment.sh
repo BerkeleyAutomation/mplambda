@@ -34,6 +34,9 @@ for ((i=1; i<=$INTERATIONS; ++i)); do
         --max 319.62,531.87,101.0 \
         --time-limit $TIME_LIMIT \
         --check-resolution 0.1 \
-    > "${DIR}/$(printf "%03d.out" $i)" 2>&1
+    > "${DIR}/$(printf "%03d.out" $i)" 2>&1 &
+    if (($i % 100 == 0)) ; then
+        wait
+    fi
 done
-
+wait

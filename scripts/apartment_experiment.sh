@@ -33,7 +33,10 @@ for ((i=1; i<=$INTERATIONS; ++i)); do
         --goal 0,0,0,-1,-31.19,-99.85,36.46 \
         --min -73.76,-179.59,-0.03 \
         --max 295.77,168.26,90.39 \
-        --time-limit 150 \
+        --time-limit $TIME_LIMIT \
         --check-resolution 0.1 \
-    > "${DIR}/$(printf "%03d.out" $i)" 2>&1
+    > "${DIR}/$(printf "%03d.out" $i)" 2>&1 & 
+    if (($i % 100 == 0)) ; then
+        wait
+    fi
 done
