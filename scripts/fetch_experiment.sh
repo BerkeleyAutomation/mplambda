@@ -15,6 +15,8 @@ if [ -z "$INTERATIONS" ] ; then
     exit 1
 fi
 
+PI=3.141592653589793
+PI_2=1.570796326794897
 
 DIR="experiments/${SCENE}/${SCENARIO}_${ALGORITHM}_${JOBS}"
 mkdir -p $DIR
@@ -32,7 +34,7 @@ for ((i=1; i<=$INTERATIONS; ++i)); do
         --goal-radius=0.01,0.01,0.01,0.01,0.01,$PI \
         --start=0.1,$PI_2,$PI_2,0,$PI_2,0,$PI_2,0 \
         --time-limit 300 \
-        --check-resolution 0.1 \
+        --check-resolution 0.01 \
     > "${DIR}/$(printf "%03d.out" $i)" 2>&1 &
     if (($i % 100 == 0)) ; then
         wait
