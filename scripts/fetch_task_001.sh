@@ -35,4 +35,4 @@ fi
     --goal-radius=0.01,0.01,0.01,0.01,0.01,$PI \
     --start=0.1,$PI_2,$PI_2,0,$PI_2,0,$PI_2,0 \
     --time-limit 120 \
-    --check-resolution 0.1
+    --check-resolution 0.01

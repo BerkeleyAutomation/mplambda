@@ -67,7 +67,7 @@ namespace mpl::demo {
         }
 
         const Distance maxSteering() const {
-            return 0.52;
+            return std::numeric_limits<Distance>::infinity();
         }
 
         static State scale(const State& q) {
