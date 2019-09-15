@@ -2,7 +2,7 @@
 #include <iostream>
 
 int main(int argc, char *argv[]) try {
-    static const std::string resourceDirectory = "../../resources/";
+    static const std::string resourceDirectory = "projects/mplambda/";
     mpl::demo::AppOptions options(argc, argv);
 
     if (!options.env_.empty())

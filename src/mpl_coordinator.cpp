@@ -461,7 +461,7 @@ std::pair<int, int> mpl::Coordinator::launchPseudoLambda(std::uint64_t pId, pack
 	args.push_back(program); // argv[0] needs to be the program name
     } else {
 	args.reserve(prob.args().size() + 10);
-	program = "ssh";
+	program = "/usr/bin/ssh";
 	args.push_back(program);
 	if (!sshIdentity_.empty()) {
 	    args.push_back("-i");
@@ -469,7 +469,7 @@ std::pair<int, int> mpl::Coordinator::launchPseudoLambda(std::uint64_t pId, pack
 	}
 	// round-robin through server list
 	args.push_back(sshServers_[sshServerNo_++ % sshServers_.size()]);
-	args.push_back("./projects/mplambda/build/Release/mpl_lambda_pseudo");
+	args.push_back("./projects/mplambda/build/Lambda/mpl_lambda_pseudo");
     }
 
     args.push_back("-I"); // then add the group identifier
@@ -641,9 +641,9 @@ void mpl::Coordinator::loop() {
             if ((pit->revents & POLLHUP) == 0) {
                 ++cit;
             } else {
-                int stat = 0;
-                if (::waitpid(cit->first, &stat, 0) == -1)
-                    JI_LOG(WARN) << "waitpid failed with error: " << errno;
+	        int stat = 0;
+                // if (::waitpid(cit->first, &stat, 0) == -1)
+                //     JI_LOG(WARN) << "waitpid failed with error: " << errno;
                 if (::close(cit->second) == -1)
                     JI_LOG(WARN) << "close failed with error: " << errno;
                 JI_LOG(INFO) << "child process " << cit->first << " exited with status " << stat;
