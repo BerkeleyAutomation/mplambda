@@ -80,7 +80,7 @@ namespace mpl {
 	
 	std::string sshIdentity_;
 	std::vector<std::string> sshServers_;
-	unsigned sshServerNo_{0};
+	unsigned lambdaNo_{0};
 
 	LambdaType lambdaType_{LAMBDA_PSEUDO};
 	
@@ -134,6 +134,7 @@ namespace mpl {
 		    sshIdentity_ = optarg;
 		    break;
 		case 's':
+                    std::clog << "adding server: " << optarg << std::endl;
 		    sshServers_.push_back(optarg);
 		    break;
 		default:
@@ -425,8 +426,7 @@ void mpl::Coordinator::launchAWSLambda(std::uint64_t pId, packet::Problem& prob)
 // child process
 std::pair<int, int> mpl::Coordinator::launchPseudoLambda(std::uint64_t pId, packet::Problem& prob) {
     // static const std::string resourceDirectory = "../../resources/";
-    static int lambdaId;
-    ++lambdaId;
+    int lambdaId = lambdaNo_++;
 
     // We create a pipe solely for tracking when a child process
     // terminates.  When the child terminates, it will
@@ -468,7 +468,7 @@ std::pair<int, int> mpl::Coordinator::launchPseudoLambda(std::uint64_t pId, pack
 	    args.push_back(sshIdentity_);
 	}
 	// round-robin through server list
-	args.push_back(sshServers_[sshServerNo_++ % sshServers_.size()]);
+	args.push_back(sshServers_[lambdaId % sshServers_.size()]);
 	args.push_back("./projects/mplambda/build/Lambda/mpl_lambda_pseudo");
     }
 
