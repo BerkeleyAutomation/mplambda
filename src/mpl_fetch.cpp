@@ -192,11 +192,14 @@ int main(int argc, char *argv[]) {
     using Robot = FetchRobot<S>;
     using Config = typename Robot::Config;
 
+    static constexpr S PI = 3.14159265358979323846264338327950288419716939937510582097494459230781640628620L;
+    
     std::mt19937_64 rng;
 
     typename Robot::Frame envFrame;
     envFrame.setIdentity();
-    envFrame.translation() << 0.57, -0.90, 0;
+    // envFrame.translation() << 0.57, -0.90, 0;
+    envFrame.translation() << 0.48, 1.09, 0;
     Eigen::AngleAxis<S> envAngle(-1.570796326794897, Eigen::Matrix<S,3,1>::UnitZ());
     envFrame.linear() = envAngle.toRotationMatrix();
     Eigen::IOFormat fmt(Eigen::StreamPrecision, Eigen::DontAlignCols, ",", ",");
@@ -219,7 +222,8 @@ int main(int argc, char *argv[]) {
     Robot robot;
     robot.toArticulatedBlenderScript(bpy, "../../resources/fetch/");
 
-    robot.setConfig(Robot::Config::Zero()); // restConfig());
+    // robot.setConfig(Robot::Config::Zero()); // restConfig());
+    robot.setConfig(Robot::restConfig());
     assert(!robot.selfCollision());
 
     // envFrame = envFrame.inverse();
@@ -227,7 +231,11 @@ int main(int argc, char *argv[]) {
     // should be around 0.82, 0.53, 0.88
     typename Robot::Frame ikTarget;
     ikTarget.setIdentity();
-    ikTarget.translation() << -1.07,0.16,0.88;
+    // ikTarget.translation() << 1.07,0.16,0.88;
+
+    // ikTarget.translation() << 0.64, 0.43, 0.88; // start
+    ikTarget.translation() << 0.70, -0.65, 1.3; // 0.78, -0.54, 1.58; // goal
+    
 
     // std::clog << "ikTarget\n" << ikTarget.matrix() << "\n"
     //           << "env * ikTarget\n"    << (envFrame*ikTarget).matrix() << "\n"
@@ -235,37 +243,49 @@ int main(int argc, char *argv[]) {
     //           << "ikTarget * env\n"    << (ikTarget * envFrame).matrix() << "\n"
     //           << "ikTarget * env^-1\n" << (ikTarget * envFrame.inverse()).matrix() << "\n";
     
-    ikTarget = envFrame * ikTarget;
+    // ikTarget = envFrame * ikTarget;
     // ikTarget.translation() -= envFrame.translation();
     
     std::clog << "IK Target:\n" << ikTarget.matrix() << std::endl;
 
     std::clog << "Gripper Axis:\n" << robot.gripperAxis().matrix() << std::endl;
     
-    // Eigen::Matrix<S, 6, 1> L;
-    // L << 1, 1, 1,   1, 1, 0.00001; // /1.570796326794897;
-
+    Eigen::Matrix<S, 6, 1> L;
+    L << 1, 1, 1,   0.1, 0.0001, 0.0001; // /1.570796326794897;
+    S eps = 1e-3;
+        
     // L << 0.01, 0.01, 0.01, 0.01, 0.01, 1.570796326794897;
-    // S eps = L.minCoeff();
+    //S eps = L.minCoeff();
     // L = eps / L.array();
 
-    // for (int iter = 0 ; iter<100 ; ++iter) {
-    //     robot.setConfig(Robot::randomConfig(rng));
-    //     if (robot.ik(ikTarget, L, eps)) {
-    //         std::clog << "IK SOLVED after " << iter << std::endl;
-    //         break;
-    //     }
-    // }
+    for (int iter = 0 ; iter<1000 ; ++iter) {
+        robot.setConfig(Robot::randomConfig(rng));
+        if (robot.ik(ikTarget, L, eps)) {
+            std::clog << "IK SOLVED after " << iter << std::endl;
+            break;
+        }
+    }
+
+    Config q0 = robot.config();
+    for (int i=1 ; i<8 ; ++i) {
+        while (q0[i] < -PI) q0[i] += 2*PI;
+        while (q0[i] >  PI) q0[i] -= 2*PI;
+    }
+    robot.setConfig(q0);
+    
+    std::clog << "Config: " << robot.config().transpose() << std::endl;
     
     // robot.updateArticulatedBlenderScript(bpy);
 
-    std::vector<Config> path = makePath007<Config>();
+    robot.updateArticulatedBlenderScript(bpy);
+
+    // std::vector<Config> path = makePath007<Config>();
         
-    for (std::size_t i=0 ; i<path.size() ; ++i) {
-        robot.setConfig(path[i]);
-        robot.updateArticulatedBlenderScript(bpy);
-        robot.keyframeInsert(bpy, i*20 + 1);
-    }
+    // for (std::size_t i=0 ; i<path.size() ; ++i) {
+    //     robot.setConfig(path[i]);
+    //     robot.updateArticulatedBlenderScript(bpy);
+    //     robot.keyframeInsert(bpy, i*20 + 1);
+    // }
     
     // for (int frame=0 ; frame<1 ; ++frame) {
     //     do {
