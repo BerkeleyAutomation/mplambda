@@ -85,6 +85,8 @@ namespace mpl::demo {
             JI_LOG(INFO) << "isValid calls: " << calls_.load();
         }
 
+        static constexpr bool multiGoal = true;
+        
         static State scale(const State& q) {
             return q;
         }

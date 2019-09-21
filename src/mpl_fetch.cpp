@@ -185,6 +185,39 @@ std::vector<T> makePath007() {
     return P;
 }
 
+template <class T>
+std::vector<T> makePath008() {
+    std::vector<T> P;
+    addPath(P, 0.100000001490116, 1.57079637050629, 1.57079637050629, 0, 1.57079637050629, 0, 1.57079637050629, 0);
+    addPath(P, 0.308644510043524, 1.53557596541954, -0.278204850835487, -6.48070346488576, -0.230153370675876, 0.691623995973503, 1.37157685900168, -8.46680709669525);
+    addPath(P, 0.336861993688924, 1.5789147234382, -0.184995361563193, -4.93844263203325, -1.01178382188101, 3.35118201422226, 1.99845992527259, -10.4738936297069);
+    addPath(P, 0.261454976937306, 0.133931892210809, -0.233248400749359, -5.2720154621543, -1.09339767152847, 3.55445963688873, -0.594836718143051, -9.55235010872283);
+    addPath(P, 0.174514281502109, 0.226158132745395, -0.455658815913303, -5.52206165097408, -0.482944261802852, 4.41016843720721, -1.25273671923786, -5.66299185445003);
+    addPath(P, 0.225233314893349, 0.458799263446214, 1.17434914825259, -6.03714378765389, -1.8204454463181, 6.01964331983371, 0.633765239748634, -6.15898820852862);
+    return P;
+}
+
+template <class T>
+std::vector<T> makePath009() {
+    std::vector<T> P;
+    addPath(P, 0.100000001490116, 1.57079637050629, 1.57079637050629, 0, 1.57079637050629, 0, 1.57079637050629, 0);
+    addPath(P, 0.368065104929598, 1.59666897921692, -0.289551000173221, -1.9019982752556, 1.0155871848655, -6.75165605896447, 0.693306745985129, -2.50998162921956);
+    addPath(P, 0.164941044474936, 1.4159362838619, 0.288369587466094, 1.32732436554482, -1.61725538131833, -3.17162577422611, -0.770625181321814, -2.50960335462906);
+    addPath(P, 0.293945209930585, 0.829883919287598, 0.489076907497621, 1.17129352558087, -0.742525850022826, 0.579903590309942, -1.27897879945009, -1.4538455272884);
+    return P;
+}
+
+// computed locally on Jobs=8, solution found after 180.569
+template <class T>
+std::vector<T> makePath010() {
+    std::vector<T> P;
+    addPath(P, 0.100000001490116, 1.57079637050629, 1.57079637050629, 0, 1.57079637050629, 0, 1.57079637050629, 0);
+    addPath(P, 0.252315827165496, 1.48081934459065, -0.313479700143259, -6.26384242306959, -0.147546914445686, 2.4648178168577, 2.03962032341327, -0.860789434808757);
+    addPath(P, 0.187076102720947, 1.20941291264495, 0.150804208482575, -10.2909074834805, 1.8029403837561, 11.8166220723357, 1.30816496181568, 1.01753475395253);
+    addPath(P, 0.247942835319268, 0.931624238223149, 0.491107929889018, -9.69201711937211, 1.65080040924326, 8.36896720813302, 0.528136376628869, 1.71712100456325);
+    addPath(P, 0.247954453743504, 1.07802707408807, 0.487343732510386, -7.94385230425517, 1.45260280557325, 6.92753598514615, 0.127836395221503, 1.41530015510521);
+    return P;
+}
 
 int main(int argc, char *argv[]) {
     using S = double;
@@ -222,70 +255,70 @@ int main(int argc, char *argv[]) {
     Robot robot;
     robot.toArticulatedBlenderScript(bpy, "../../resources/fetch/");
 
-    // robot.setConfig(Robot::Config::Zero()); // restConfig());
-    robot.setConfig(Robot::restConfig());
-    assert(!robot.selfCollision());
+    // // robot.setConfig(Robot::Config::Zero()); // restConfig());
+    // robot.setConfig(Robot::restConfig());
+    // assert(!robot.selfCollision());
 
-    // envFrame = envFrame.inverse();
+    // // envFrame = envFrame.inverse();
 
-    // should be around 0.82, 0.53, 0.88
-    typename Robot::Frame ikTarget;
-    ikTarget.setIdentity();
-    // ikTarget.translation() << 1.07,0.16,0.88;
+    // // should be around 0.82, 0.53, 0.88
+    // typename Robot::Frame ikTarget;
+    // ikTarget.setIdentity();
+    // // ikTarget.translation() << 1.07,0.16,0.88;
 
-    // ikTarget.translation() << 0.64, 0.43, 0.88; // start
-    ikTarget.translation() << 0.70, -0.65, 1.3; // 0.78, -0.54, 1.58; // goal
+    // // ikTarget.translation() << 0.64, 0.43, 0.88; // start
+    // ikTarget.translation() << 0.70, -0.65, 1.3; // 0.78, -0.54, 1.58; // goal
     
 
-    // std::clog << "ikTarget\n" << ikTarget.matrix() << "\n"
-    //           << "env * ikTarget\n"    << (envFrame*ikTarget).matrix() << "\n"
-    //           << "env^-1 * ikTarget\n" << (envFrame.inverse()*ikTarget).matrix() << "\n"
-    //           << "ikTarget * env\n"    << (ikTarget * envFrame).matrix() << "\n"
-    //           << "ikTarget * env^-1\n" << (ikTarget * envFrame.inverse()).matrix() << "\n";
+    // // std::clog << "ikTarget\n" << ikTarget.matrix() << "\n"
+    // //           << "env * ikTarget\n"    << (envFrame*ikTarget).matrix() << "\n"
+    // //           << "env^-1 * ikTarget\n" << (envFrame.inverse()*ikTarget).matrix() << "\n"
+    // //           << "ikTarget * env\n"    << (ikTarget * envFrame).matrix() << "\n"
+    // //           << "ikTarget * env^-1\n" << (ikTarget * envFrame.inverse()).matrix() << "\n";
     
-    // ikTarget = envFrame * ikTarget;
-    // ikTarget.translation() -= envFrame.translation();
+    // // ikTarget = envFrame * ikTarget;
+    // // ikTarget.translation() -= envFrame.translation();
     
-    std::clog << "IK Target:\n" << ikTarget.matrix() << std::endl;
+    // std::clog << "IK Target:\n" << ikTarget.matrix() << std::endl;
 
-    std::clog << "Gripper Axis:\n" << robot.gripperAxis().matrix() << std::endl;
+    // std::clog << "Gripper Axis:\n" << robot.gripperAxis().matrix() << std::endl;
     
-    Eigen::Matrix<S, 6, 1> L;
-    L << 1, 1, 1,   0.1, 0.0001, 0.0001; // /1.570796326794897;
-    S eps = 1e-3;
+    // Eigen::Matrix<S, 6, 1> L;
+    // L << 1, 1, 1,   0.1, 0.0001, 0.0001; // /1.570796326794897;
+    // S eps = 1e-3;
         
-    // L << 0.01, 0.01, 0.01, 0.01, 0.01, 1.570796326794897;
-    //S eps = L.minCoeff();
-    // L = eps / L.array();
+    // // L << 0.01, 0.01, 0.01, 0.01, 0.01, 1.570796326794897;
+    // //S eps = L.minCoeff();
+    // // L = eps / L.array();
 
-    for (int iter = 0 ; iter<1000 ; ++iter) {
-        robot.setConfig(Robot::randomConfig(rng));
-        if (robot.ik(ikTarget, L, eps)) {
-            std::clog << "IK SOLVED after " << iter << std::endl;
-            break;
-        }
-    }
+    // for (int iter = 0 ; iter<1000 ; ++iter) {
+    //     robot.setConfig(Robot::randomConfig(rng));
+    //     if (robot.ik(ikTarget, L, eps)) {
+    //         std::clog << "IK SOLVED after " << iter << std::endl;
+    //         break;
+    //     }
+    // }
 
-    Config q0 = robot.config();
-    for (int i=1 ; i<8 ; ++i) {
-        while (q0[i] < -PI) q0[i] += 2*PI;
-        while (q0[i] >  PI) q0[i] -= 2*PI;
-    }
-    robot.setConfig(q0);
+    // Config q0 = robot.config();
+    // for (int i=1 ; i<8 ; ++i) {
+    //     while (q0[i] < -PI) q0[i] += 2*PI;
+    //     while (q0[i] >  PI) q0[i] -= 2*PI;
+    // }
+    // robot.setConfig(q0);
     
-    std::clog << "Config: " << robot.config().transpose() << std::endl;
+    // std::clog << "Config: " << robot.config().transpose() << std::endl;
     
+    // // robot.updateArticulatedBlenderScript(bpy);
+
     // robot.updateArticulatedBlenderScript(bpy);
 
-    robot.updateArticulatedBlenderScript(bpy);
-
-    // std::vector<Config> path = makePath007<Config>();
+    std::vector<Config> path = makePath010<Config>();
         
-    // for (std::size_t i=0 ; i<path.size() ; ++i) {
-    //     robot.setConfig(path[i]);
-    //     robot.updateArticulatedBlenderScript(bpy);
-    //     robot.keyframeInsert(bpy, i*20 + 1);
-    // }
+    for (std::size_t i=0 ; i<path.size() ; ++i) {
+        robot.setConfig(path[i]);
+        robot.updateArticulatedBlenderScript(bpy);
+        robot.keyframeInsert(bpy, i*50 + 1);
+    }
     
     // for (int frame=0 ; frame<1 ; ++frame) {
     //     do {

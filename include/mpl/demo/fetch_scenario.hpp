@@ -62,6 +62,8 @@ namespace mpl::demo {
             JI_LOG(INFO) << "goal tolerance: eps=" << goalEps_ << ", L=" << goalL_;
         }
 
+        static constexpr bool multiGoal = true;
+
         const Space& space() const {
             return space_;
         }

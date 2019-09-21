@@ -654,7 +654,7 @@ namespace mpl {
             
             Edge *s = planner.solution_.load(std::memory_order_acquire);
 
-            if (s == nullptr) {
+            if (Scenario::multiGoal || s == nullptr) {
                 if (goalBias_ > 0 && unif01(rng_) < goalBias_) {
                     if (auto q = planner.scenario_.sampleGoal(rng_)) {
                         ++planner.goalBiasedSamples_;
