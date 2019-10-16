@@ -26,6 +26,22 @@ find_package(Assimp REQUIRED)
 find_package(Threads)
 find_package(Eigen3 3.3 REQUIRED NO_MODULE)
 
+### BEGIN ANNA INTEGRATION BLOCK
+INCLUDE(FindProtobuf)
+FIND_PACKAGE(Protobuf REQUIRED)
+LINK_DIRECTORIES(
+    ../anna/build
+    ../anna/build/common/vendor/yamlcpp/src/yamlcpp
+    ../anna/build/common/vendor/zeromq/src/zeromq/src/.libs)
+SET(ANNA_LIBRARIES
+    protobuf::libprotobuf
+    anna-proto
+    zmq
+    hydro-zmq
+    yaml-cpp
+)
+###  END ANNA INTEGRATION BLOCK
+
 if (OPENMP_FOUND)
     set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${OpenMP_C_FLAGS}")
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${OpenMP_CXX_FLAGS}")
@@ -43,7 +59,7 @@ else ()
     find_package(aws-lambda-runtime REQUIRED)
     find_package(AWSSDK COMPONENTS s3 lambda)
     add_executable(mpl_lambda_aws src/mpl_lambda_aws.cpp src/mpl/demo/lambda_common.cpp src/mpl/comm.cpp src/mpl/write_queue.cpp src/mpl/demo/app_options.cpp)
-    target_link_libraries(mpl_lambda_aws PUBLIC Eigen3::Eigen Threads::Threads ${ASSIMP_LIBRARIES} ${FCL_LIBRARIES} ${CCD_LIBRARIES} AWS::aws-lambda-runtime ${AWSSDK_LINK_LIBRARIES})
+    target_link_libraries(mpl_lambda_aws PUBLIC Eigen3::Eigen Threads::Threads ${ASSIMP_LIBRARIES} ${FCL_LIBRARIES} ${CCD_LIBRARIES} AWS::aws-lambda-runtime ${AWSSDK_LINK_LIBRARIES} ${ANNA_LIBRARIES})
     
     # the following line adds "aws-lambda-package-mpl_lambda_aws" as a
     # target which creates a .zip file with everything we need to
@@ -68,7 +84,7 @@ else ()
 endif()
 
 link_directories(${FCL_LIBRARY_DIRS} ${ASSIMP_LIBRARY_DIRS})
-include_directories(include ../nigh/src ${FCL_INCLUDE_DIRS} ${ASSIMP_INCLUDE_DIRS})
+include_directories(include ../nigh/src ../anna/common/include ../anna/build ${FCL_INCLUDE_DIRS} ${ASSIMP_INCLUDE_DIRS})
 
 file(COPY ${CMAKE_CURRENT_SOURCE_DIR}/resources/AUTOLAB.dae
      DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/resources)
@@ -80,7 +96,7 @@ file(COPY ${SE3RSRC} DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/resources/se3)
 
 
 add_executable(mpl_lambda_pseudo src/mpl_lambda_pseudo.cpp src/mpl/demo/lambda_common.cpp src/mpl/comm.cpp src/mpl/write_queue.cpp src/mpl/demo/app_options.cpp)
-target_link_libraries(mpl_lambda_pseudo Eigen3::Eigen Threads::Threads ${ASSIMP_LIBRARIES} ${FCL_LIBRARIES} ${CCD_LIBRARIES})
+target_link_libraries(mpl_lambda_pseudo Eigen3::Eigen Threads::Threads ${ASSIMP_LIBRARIES} ${FCL_LIBRARIES} ${CCD_LIBRARIES} ${ANNA_LIBRARIES})
 
 add_executable(mpl_robot src/mpl_robot.cpp src/mpl/write_queue.cpp src/mpl/demo/app_options.cpp)
 target_link_libraries(mpl_robot Eigen3::Eigen Threads::Threads ${ASSIMP_LIBRARIES} ${FCL_LIBRARIES} ${CCD_LIBRARIES})

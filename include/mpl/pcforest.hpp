@@ -169,7 +169,7 @@ namespace mpl {
             start_ = threads_[0].addStart(*this, q);
         }
 
-        void addPath(Distance cost, std::vector<State>&& path) {
+        void addPath(Distance cost, const std::vector<State>& path) {
             JI_LOG(WARN) << "ADDPATH CALLED with cost=" << cost << ", waypoints=" << path.size();
 
             if (path.size() < 2) {

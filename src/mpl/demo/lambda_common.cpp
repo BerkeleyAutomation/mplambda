@@ -5,8 +5,13 @@
 #include <mpl/comm.hpp>
 #include <mpl/pcforest.hpp>
 #include <mpl/option.hpp>
+#include <client/kvs_client.hpp>
 #include <getopt.h>
 #include <optional>
+
+// these static variables are needed by Anna
+ZmqUtil zmq_util;
+ZmqUtilInterface *kZmqUtil = &zmq_util;
 
 namespace mpl::demo {
 
@@ -41,6 +46,27 @@ namespace mpl::demo {
         }
     };
 
+    template <class T, class Rep, class Period>
+    void sendPath(
+        KvsClient& client, const std::string& solutionPathKey,
+        std::chrono::duration<Rep, Period> elapsed, T& solution)
+    {
+        using State = typename T::State;
+        using Distance = typename T::Distance;
+        
+        std::vector<State> path;
+        solution.visit([&] (const State& q) { path.push_back(q); });
+        std::reverse(path.begin(), path.end());
+        
+        Distance cost = solution.cost();
+        // comm.sendPath(cost, elapsed, std::move(path));
+        std::uint32_t elapsedMillis = std::chrono::duration_cast<std::chrono::milliseconds>(
+            elapsed).count();
+        packet::Path<State> packet(cost, elapsedMillis, std::move(path));
+        Buffer buf = packet;
+        client.put_async(solutionPathKey, buf, LatticeType::PRIORITY);
+    }
+
 
     template <class T, class Rep, class Period>
     void sendPath(Comm& comm, std::chrono::duration<Rep, Period> elapsed, T& solution) {
@@ -63,13 +89,19 @@ namespace mpl::demo {
 
         State qStart = options.start<State>();
 
-        Comm comm_;
+
+        std::vector<UserRoutingThread> threads;
+        Address addr("127.0.0.1");
+        threads.push_back(UserRoutingThread(addr, 0));
+        Address ip("127.0.0.1");
+        KvsClient kvsClient(threads, ip, 0, 10000);
+        // Comm comm_;
 
         if (options.coordinator(false).empty()) {
             JI_LOG(WARN) << "no coordinator set";
-        } else {
-            comm_.setProblemId(options.problemId());
-            comm_.connect(options.coordinator());
+        // } else {
+        //     comm_.setProblemId(options.problemId());
+        //     comm_.connect(options.coordinator());
         }
 
         JI_LOG(INFO) << "setting up planner";
@@ -91,58 +123,114 @@ namespace mpl::demo {
         auto solution = planner.solution();
         assert(!solution);
 
-        if constexpr (Algorithm::asymptotically_optimal) {
+        const std::string solutionPathKey = "solution_path";
+
+        kvsClient.get_async(solutionPathKey);
+
+        if constexpr (Algorithm::asymptotically_optimal) {                
             // asymptotically-optimal planner, run for the
             // time-limit, and update the graph with best paths
             // from the network.
             planner.solve([&] {
                 if (maxElapsedSolveTime.count() > 0 && Clock::now() - start > maxElapsedSolveTime)
                     return true;
-                comm_.process(
-                    [&] (auto cost, auto&& pktPath) {
-                        using Path = std::decay_t<decltype(pktPath)>;
-                        using PathState = typename Path::value_type;
-                        if constexpr (std::is_same_v<State, PathState>) {
-                            planner.addPath(cost, std::forward<decltype(pktPath)>(pktPath));
-                        } else if constexpr (ConvertState<State,PathState>::value) {
-                            std::vector<State> path;
-                            path.reserve(pktPath.size());
-                            for (auto& q : pktPath)
-                                path.emplace_back(ConvertState<State,PathState>::apply(q));
-                            planner.addPath(cost, std::move(path));
-                        } else {
-                            JI_LOG(WARN) << "received incompatible path type!";
-                            return;
-                        }
+
+                std::vector<KeyResponse> responses = kvsClient.receive_async();
+                if (!responses.empty()) {
+                    kvsClient.get_async(solutionPathKey);
+                    
+                    Buffer buf(responses.front().tuples(0).payload());
+                    // process the payload, note: packet::parse will
+                    // not do anything if the buffer is empty.
+                    packet::parse(
+                        buf,
+                        [&] (auto&& path) {
+                            if constexpr (std::is_same_v<std::decay_t<decltype(path)>, packet::Path<State>>) {
+                                // do not update our solution if we
+                                // already have the a solution with
+                                // the same or better cost.
+                                if (solution.cost() <= path.cost())
+                                    return;
+                                    
+                                planner.addPath(path.cost(), path.path());
+
+                                // update our best solution if it has
+                                // the same cost as the solution we
+                                // just got from a peer.  If we have a
+                                // different solution, then we'll
+                                // update and send the solution after
+                                // the comm_.process().  This avoids
+                                // re-broadcasting the same solution.
+                                // (It is possible that incorporating
+                                // the new solution will lower the
+                                // cost)
+                                auto newSol = planner.solution();
+                                if (newSol.cost() == path.cost())
+                                    solution = newSol;
+                            } else {
+                                JI_LOG(WARN) << "received invalid path type!";
+                            }
+                        });
+                }
+
+                
+                // comm_.process(
+                //     [&] (auto cost, auto&& pktPath) {
+                //         using Path = std::decay_t<decltype(pktPath)>;
+                //         using PathState = typename Path::value_type;
+                //         if constexpr (std::is_same_v<State, PathState>) {
+                //             planner.addPath(cost, std::forward<decltype(pktPath)>(pktPath));
+                //         } else if constexpr (ConvertState<State,PathState>::value) {
+                //             std::vector<State> path;
+                //             path.reserve(pktPath.size());
+                //             for (auto& q : pktPath)
+                //                 path.emplace_back(ConvertState<State,PathState>::apply(q));
+                //             planner.addPath(cost, std::move(path));
+                //         } else {
+                //             JI_LOG(WARN) << "received incompatible path type!";
+                //             return;
+                //         }
                         
-                        // update our best solution if it has the same
-                        // cost as the solution we just got from a
-                        // peer.  If we have a different solution,
-                        // then we'll update and send the solution
-                        // after the comm_.process().  This avoids
-                        // re-broadcasting the same solution.
-                        auto newSol = planner.solution();
-                        if (newSol.cost() == cost)
-                            solution = newSol;
-                    });
+                //         // update our best solution if it has the same
+                //         // cost as the solution we just got from a
+                //         // peer.  If we have a different solution,
+                //         // then we'll update and send the solution
+                //         // after the comm_.process().  This avoids
+                //         // re-broadcasting the same solution.
+                //         auto newSol = planner.solution();
+                //         if (newSol.cost() == cost)
+                //             solution = newSol;
+                //     });
                 
                 auto s = planner.solution();
                 if (s < solution) {
-                    sendPath(comm_, Clock::now() - start, s);
+                    // sendPath(comm_, Clock::now() - start, s);
+                    sendPath(kvsClient, solutionPathKey, Clock::now() - start, s);
                     solution = s;
                 }
                 
-                return comm_.isDone();
+                // return comm_.isDone();
+                return false;
             });
         } else {
             // non-asymptotically-optimal.  Stop as soon as we
             // have a solution (either locally or from the
             // network)
+            bool hasPath = false;
             planner.solve([&] {
                 if (maxElapsedSolveTime.count() > 0 && Clock::now() - start > maxElapsedSolveTime)
                     return true;
-                comm_.process();
-                return comm_.isDone() || planner.isSolved();
+
+                if (!hasPath) {
+                    std::vector<KeyResponse> responses = kvsClient.receive_async();
+                    if (!responses.empty()) {
+                        // TODO: check if there's a path, if so, we're done
+                        // hasPath = true;
+                        kvsClient.get_async(solutionPathKey);
+                    }
+                }
+
+                return hasPath || planner.isSolved();
             });
         }
             
@@ -155,7 +243,8 @@ namespace mpl::demo {
             
         if (auto finalSolution = planner.solution()) {
             if (finalSolution != solution)
-                sendPath(comm_, Clock::now() - start, finalSolution);
+                sendPath(kvsClient, solutionPathKey, Clock::now() - start, finalSolution);
+                // sendPath(comm_, Clock::now() - start, finalSolution);
             finalSolution.visit([] (const State& q) { JI_LOG(INFO) << "  " << q; });
         }
 
@@ -176,7 +265,8 @@ namespace mpl::demo {
         }
 #endif
 
-        comm_.sendDone();
+        // comm_.sendDone();
+        // TODO: we need to send something
     }
 
 

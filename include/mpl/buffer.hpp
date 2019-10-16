@@ -234,6 +234,12 @@ namespace mpl {
         {
         }
 
+        Buffer(const std::string& str)
+            : Buffer(str.size())
+        {
+            std::copy(str.begin(), str.end(), base_);
+        }
+
         ~Buffer() {
             delete[] base_;
         }
@@ -280,6 +286,10 @@ namespace mpl {
             position_ = newBuf + remaining();
             limit_ = newBuf + capacity_;
             return *this;
+        }
+
+        operator std::string () const {
+            return std::string(begin(), end());
         }
     };
 }
