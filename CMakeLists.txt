@@ -32,7 +32,8 @@ FIND_PACKAGE(Protobuf REQUIRED)
 LINK_DIRECTORIES(
     ../anna/build
     ../anna/build/common/vendor/yamlcpp/src/yamlcpp
-    ../anna/build/common/vendor/zeromq/src/zeromq/src/.libs)
+    ../anna/build/common/vendor/zeromq/src/zeromq/src/.libs
+    )
 SET(ANNA_LIBRARIES
     protobuf::libprotobuf
     anna-proto
@@ -40,6 +41,7 @@ SET(ANNA_LIBRARIES
     hydro-zmq
     yaml-cpp
 )
+# set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -stdlib=libstdc++")
 ###  END ANNA INTEGRATION BLOCK
 
 if (OPENMP_FOUND)
@@ -56,30 +58,30 @@ else ()
     set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -DHAS_AWS_SDK")
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DHAS_AWS_SDK")
     
-    find_package(aws-lambda-runtime REQUIRED)
-    find_package(AWSSDK COMPONENTS s3 lambda)
-    add_executable(mpl_lambda_aws src/mpl_lambda_aws.cpp src/mpl/demo/lambda_common.cpp src/mpl/comm.cpp src/mpl/write_queue.cpp src/mpl/demo/app_options.cpp)
-    target_link_libraries(mpl_lambda_aws PUBLIC Eigen3::Eigen Threads::Threads ${ASSIMP_LIBRARIES} ${FCL_LIBRARIES} ${CCD_LIBRARIES} AWS::aws-lambda-runtime ${AWSSDK_LINK_LIBRARIES} ${ANNA_LIBRARIES})
-    
-    # the following line adds "aws-lambda-package-mpl_lambda_aws" as a
-    # target which creates a .zip file with everything we need to
-    # upload a function to aws.
-    aws_lambda_package_target(mpl_lambda_aws)
+    #find_package(aws-lambda-runtime REQUIRED)
+    #find_package(AWSSDK COMPONENTS s3 lambda)
+    #add_executable(mpl_lambda_aws src/mpl_lambda_aws.cpp src/mpl/demo/lambda_common.cpp src/mpl/comm.cpp src/mpl/write_queue.cpp src/mpl/demo/app_options.cpp)
+    #target_link_libraries(mpl_lambda_aws PUBLIC Eigen3::Eigen Threads::Threads ${ASSIMP_LIBRARIES} ${FCL_LIBRARIES} ${CCD_LIBRARIES} AWS::aws-lambda-runtime ${AWSSDK_LINK_LIBRARIES} ${ANNA_LIBRARIES})
+    #
+    ## the following line adds "aws-lambda-package-mpl_lambda_aws" as a
+    ## target which creates a .zip file with everything we need to
+    ## upload a function to aws.
+    #aws_lambda_package_target(mpl_lambda_aws)
 
-    # this is the command to run in order to create the full lambda zip:
-    add_custom_target(mpl_lambda_aws_zip
-    	COMMAND zip -ur9 mpl_lambda_aws.zip resources
-    	DEPENDS aws-lambda-package-mpl_lambda_aws)
+    ## this is the command to run in order to create the full lambda zip:
+    #add_custom_target(mpl_lambda_aws_zip
+    #	COMMAND zip -ur9 mpl_lambda_aws.zip resources
+    #	DEPENDS aws-lambda-package-mpl_lambda_aws)
 
-    # After creating the lambda zip, we can upload it using:
-    add_custom_target(update-function-code
-        COMMAND aws lambda update-function-code --function-name mpl_lambda_aws_test --zip-file fileb://mpl_lambda_aws.zip)
+    ## After creating the lambda zip, we can upload it using:
+    #add_custom_target(update-function-code
+    #    COMMAND aws lambda update-function-code --function-name mpl_lambda_aws_test --zip-file fileb://mpl_lambda_aws.zip)
 
-    add_executable(mpl_lambda_invoke src/mpl_lambda_invoke.cpp)
-    target_link_libraries(mpl_lambda_invoke AWS::aws-lambda-runtime ${AWSSDK_LINK_LIBRARIES})
+    #add_executable(mpl_lambda_invoke src/mpl_lambda_invoke.cpp)
+    #target_link_libraries(mpl_lambda_invoke AWS::aws-lambda-runtime ${AWSSDK_LINK_LIBRARIES})
 
-    add_executable(mpl_coordinator src/mpl_coordinator.cpp src/mpl/write_queue.cpp)
-    target_link_libraries(mpl_coordinator Threads::Threads AWS::aws-lambda-runtime ${AWSSDK_LINK_LIBRARIES})
+    #add_executable(mpl_coordinator src/mpl_coordinator.cpp src/mpl/write_queue.cpp)
+    #target_link_libraries(mpl_coordinator Threads::Threads AWS::aws-lambda-runtime ${AWSSDK_LINK_LIBRARIES})
 
 endif()
 

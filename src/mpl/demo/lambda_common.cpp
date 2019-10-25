@@ -48,7 +48,7 @@ namespace mpl::demo {
 
     template <class T, class Rep, class Period>
     void sendPath(
-        KvsClient& client, const std::string& solutionPathKey,
+        KvsClient* client, const std::string& solutionPathKey,
         std::chrono::duration<Rep, Period> elapsed, T& solution)
     {
         using State = typename T::State;
@@ -64,7 +64,31 @@ namespace mpl::demo {
             elapsed).count();
         packet::Path<State> packet(cost, elapsedMillis, std::move(path));
         Buffer buf = packet;
-        client.put_async(solutionPathKey, buf, LatticeType::PRIORITY);
+	string test = buf.getString();
+	Key k = solutionPathKey;
+	//string rid = client->put_async(k, "test", LatticeType::PRIORITY);
+	 LWWPairLattice<string> val(
+	        	         TimestampValuePair<string>(generate_timestamp(0), "world"));
+	 //PriorityValuePair<double, string> val;
+	 //val.priority = 0.0;
+	 //val.value = "hellohello";
+	string rid = client->put_async(k, serialize(val), LatticeType::LWW);
+	vector<KeyResponse> responses = client->receive_async();
+	while (responses.size() == 0) {
+		responses = client->receive_async();
+	}
+
+	KeyResponse response = responses[0];
+
+	if (response.response_id() != rid) {
+		JI_LOG(INFO) << "Invalid response: ID did not match request ID!"
+			;
+	}
+	if (response.tuples()[0].error() == AnnaError::NO_ERROR) {
+		JI_LOG(INFO) << "Success!" ;
+	} else {
+		JI_LOG(INFO) << "Failure!" ;
+	}
     }
 
 
@@ -94,7 +118,8 @@ namespace mpl::demo {
         Address addr("127.0.0.1");
         threads.push_back(UserRoutingThread(addr, 0));
         Address ip("127.0.0.1");
-        KvsClient kvsClient(threads, ip, 0, 10000);
+	int thread_id = options.thread_id_;
+        KvsClient kvsClient(threads, ip, thread_id, 10000);
         // Comm comm_;
 
         if (options.coordinator(false).empty()) {
@@ -135,13 +160,15 @@ namespace mpl::demo {
                 if (maxElapsedSolveTime.count() > 0 && Clock::now() - start > maxElapsedSolveTime)
                     return true;
 
+	        kvsClient.get_async(solutionPathKey);
                 std::vector<KeyResponse> responses = kvsClient.receive_async();
                 if (!responses.empty()) {
-                    kvsClient.get_async(solutionPathKey);
                     
                     Buffer buf(responses.front().tuples(0).payload());
+
                     // process the payload, note: packet::parse will
                     // not do anything if the buffer is empty.
+
                     packet::parse(
                         buf,
                         [&] (auto&& path) {
@@ -165,6 +192,7 @@ namespace mpl::demo {
                                 // the new solution will lower the
                                 // cost)
                                 auto newSol = planner.solution();
+				
                                 if (newSol.cost() == path.cost())
                                     solution = newSol;
                             } else {
@@ -203,9 +231,10 @@ namespace mpl::demo {
                 //     });
                 
                 auto s = planner.solution();
+		//JI_LOG(INFO) << "using planner: " << s.cost() << solution.cost();
                 if (s < solution) {
                     // sendPath(comm_, Clock::now() - start, s);
-                    sendPath(kvsClient, solutionPathKey, Clock::now() - start, s);
+                    sendPath(&kvsClient, solutionPathKey, Clock::now() - start, s);
                     solution = s;
                 }
                 
@@ -243,7 +272,7 @@ namespace mpl::demo {
             
         if (auto finalSolution = planner.solution()) {
             if (finalSolution != solution)
-                sendPath(kvsClient, solutionPathKey, Clock::now() - start, finalSolution);
+                sendPath(&kvsClient, solutionPathKey, Clock::now() - start, finalSolution);
                 // sendPath(comm_, Clock::now() - start, finalSolution);
             finalSolution.visit([] (const State& q) { JI_LOG(INFO) << "  " << q; });
         }

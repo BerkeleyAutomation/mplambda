@@ -67,11 +67,12 @@ mpl::demo::AppOptions::AppOptions(int argc, char *argv[]) {
         { "check-resolution", required_argument, NULL, 'd' },
         { "discretization", required_argument, NULL, 'd' }, // less-descriptive alieas
         { "float", no_argument, NULL, 'f' },
+        { "thread_id", required_argument, NULL, 'T' },
         
         { NULL, 0, NULL, 0 }
     };
 
-    for (int ch ; (ch = getopt_long(argc, argv, "S:a:c:j:e:E:r:g:G:s:m:M:I:t:d:f", longopts, NULL)) != -1 ; ) {
+    for (int ch ; (ch = getopt_long(argc, argv, "S:a:c:j:e:E:r:g:G:s:m:M:I:t:d:f:T", longopts, NULL)) != -1 ; ) {
         char *endp;
                 
         switch (ch) {
@@ -131,6 +132,10 @@ mpl::demo::AppOptions::AppOptions(int argc, char *argv[]) {
         case 'f':
             singlePrecision_ = true;
             break;
+	case 'T':
+	    std::cout << "here" << optarg << "here";
+	    thread_id_ =  std::stoi(optarg);
+	    break;
         default:
             usage(argv[0]);
             throw std::invalid_argument("see above");

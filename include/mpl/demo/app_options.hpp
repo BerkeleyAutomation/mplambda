@@ -129,6 +129,7 @@ namespace mpl::demo {
 
         std::string min_;
         std::string max_;
+	std::uint16_t thread_id_ = 0;
 
         double timeLimit_{std::numeric_limits<double>::infinity()};
         double checkResolution_{0};
