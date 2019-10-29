@@ -64,15 +64,13 @@ namespace mpl::demo {
             elapsed).count();
         packet::Path<State> packet(cost, elapsedMillis, std::move(path));
         Buffer buf = packet;
-	string test = buf.getString();
 	Key k = solutionPathKey;
-	//string rid = client->put_async(k, "test", LatticeType::PRIORITY);
-	 LWWPairLattice<string> val(
-	        	         TimestampValuePair<string>(generate_timestamp(0), "world"));
-	 //PriorityValuePair<double, string> val;
-	 //val.priority = 0.0;
-	 //val.value = "hellohello";
-	string rid = client->put_async(k, serialize(val), LatticeType::LWW);
+	//LWWPairLattice<string> val(
+	//      	         TimestampValuePair<string>(generate_timestamp(0), buf));
+	//string rid = client->put_async(k, serialize(val), LatticeType::LWW);
+	 PriorityLattice<double, string> val(PriorityValuePair(cost, buf.getString()));
+	 string rid = client->put_async(k, serialize(val), LatticeType::PRIORITY);
+	 JI_LOG(INFO) << "async_put " << k << " " << serialize(val);
 	vector<KeyResponse> responses = client->receive_async();
 	while (responses.size() == 0) {
 		responses = client->receive_async();
@@ -162,9 +160,20 @@ namespace mpl::demo {
 
 	        kvsClient.get_async(solutionPathKey);
                 std::vector<KeyResponse> responses = kvsClient.receive_async();
+
                 if (!responses.empty()) {
                     
-                    Buffer buf(responses.front().tuples(0).payload());
+		    //LWWPairLattice<string> lww_lattice =
+		    //    deserialize_lww(responses[0].tuples(0).payload());
+		    //JI_LOG(INFO) << "responses " <<  responses[0].tuples(0).payload();
+		    PriorityLattice<double, string> pri_lattice =
+			deserialize_priority(responses[0].tuples(0).payload());
+                    //Buffer buf(responses.front().tuples(0).payload());
+                    Buffer buf(pri_lattice.reveal().value);
+		    string str = static_cast<std::string>(buf);
+		    if (!str.empty()) JI_LOG(INFO) << "responses " <<  str;
+		    //if (!buf.getString().empty()) JI_LOG(INFO) << "responses " << pri_lattice.reveal().value;
+		    //if (!buf.getString().empty()) JI_LOG(INFO) << "responses " << buf.getString();
 
                     // process the payload, note: packet::parse will
                     // not do anything if the buffer is empty.
@@ -176,6 +185,7 @@ namespace mpl::demo {
                                 // do not update our solution if we
                                 // already have the a solution with
                                 // the same or better cost.
+				JI_LOG(INFO) << "costs " << solution.cost() << " " << path.cost();
                                 if (solution.cost() <= path.cost())
                                     return;
                                     
