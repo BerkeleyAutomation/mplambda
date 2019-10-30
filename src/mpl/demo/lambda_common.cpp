@@ -68,25 +68,24 @@ namespace mpl::demo {
 	//LWWPairLattice<string> val(
 	//      	         TimestampValuePair<string>(generate_timestamp(0), buf));
 	//string rid = client->put_async(k, serialize(val), LatticeType::LWW);
-	 PriorityLattice<double, string> val(PriorityValuePair(cost, buf.getString()));
-	 string rid = client->put_async(k, serialize(val), LatticeType::PRIORITY);
-	 JI_LOG(INFO) << "async_put " << k << " " << serialize(val);
-	vector<KeyResponse> responses = client->receive_async();
-	while (responses.size() == 0) {
-		responses = client->receive_async();
-	}
+	PriorityLattice<double, string> val(PriorityValuePair<double, string>(cost, buf.getString()));
+	string rid = client->put_async(k, serialize(val), LatticeType::PRIORITY);
+	//JI_LOG(INFO) << "async_put " << k << " " << serialize(val);
+	//vector<KeyResponse> responses = client->receive_async();
+	//while (responses.size() == 0) {
+	//	responses = client->receive_async();
+	//}
 
-	KeyResponse response = responses[0];
+	//KeyResponse response = responses[0];
 
-	if (response.response_id() != rid) {
-		JI_LOG(INFO) << "Invalid response: ID did not match request ID!"
-			;
-	}
-	if (response.tuples()[0].error() == AnnaError::NO_ERROR) {
-		JI_LOG(INFO) << "Success!" ;
-	} else {
-		JI_LOG(INFO) << "Failure!" ;
-	}
+	//if (response.response_id() != rid) {
+	//	JI_LOG(INFO) << "Invalid response: ID did not match request ID!";
+	//}
+	//if (response.tuples()[0].error() == AnnaError::NO_ERROR) {
+	//	JI_LOG(INFO) << "Success!" ;
+	//} else {
+	//	JI_LOG(INFO) << "Failure!" << response.tuples()[0].error();
+	//}
     }
 
 
@@ -148,7 +147,7 @@ namespace mpl::demo {
 
         const std::string solutionPathKey = "solution_path";
 
-        kvsClient.get_async(solutionPathKey);
+        //kvsClient.get_async(solutionPathKey);
 
         if constexpr (Algorithm::asymptotically_optimal) {                
             // asymptotically-optimal planner, run for the
@@ -163,15 +162,24 @@ namespace mpl::demo {
 
                 if (!responses.empty()) {
                     
+		//    //JI_LOG(INFO) << "responses " <<  responses[0].tuples(0).payload();
+		//    
+		//    JI_LOG(INFO) << "responses " <<  responses.size() << " " << responses[0].tuples(0).payload();
 		    //LWWPairLattice<string> lww_lattice =
 		    //    deserialize_lww(responses[0].tuples(0).payload());
-		    //JI_LOG(INFO) << "responses " <<  responses[0].tuples(0).payload();
+                    //Buffer buf(lww_lattice.reveal().value);
+
 		    PriorityLattice<double, string> pri_lattice =
-			deserialize_priority(responses[0].tuples(0).payload());
-                    //Buffer buf(responses.front().tuples(0).payload());
+		        deserialize_priority(responses[0].tuples(0).payload());
                     Buffer buf(pri_lattice.reveal().value);
 		    string str = static_cast<std::string>(buf);
 		    if (!str.empty()) JI_LOG(INFO) << "responses " <<  str;
+			if (responses[0].tuples()[0].error() == AnnaError::NO_ERROR) {
+				JI_LOG(INFO) << "Success!" ;
+			} else {
+				JI_LOG(INFO) << "Failure! " << responses[0].tuples()[0].error() ;
+			}
+
 		    //if (!buf.getString().empty()) JI_LOG(INFO) << "responses " << pri_lattice.reveal().value;
 		    //if (!buf.getString().empty()) JI_LOG(INFO) << "responses " << buf.getString();
 
