@@ -173,12 +173,12 @@ namespace mpl::demo {
 		        deserialize_priority(responses[0].tuples(0).payload());
                     Buffer buf(pri_lattice.reveal().value);
 		    string str = static_cast<std::string>(buf);
-		    if (!str.empty()) JI_LOG(INFO) << "responses " <<  str;
-			if (responses[0].tuples()[0].error() == AnnaError::NO_ERROR) {
-				JI_LOG(INFO) << "Success!" ;
-			} else {
-				JI_LOG(INFO) << "Failure! " << responses[0].tuples()[0].error() ;
-			}
+		    //if (!str.empty()) JI_LOG(INFO) << "responses " <<  str;
+			//if (responses[0].tuples()[0].error() == AnnaError::NO_ERROR) {
+			//	JI_LOG(INFO) << "Success!" ;
+			//} else {
+			//	JI_LOG(INFO) << "Failure! " << responses[0].tuples()[0].error() ;
+			//}
 
 		    //if (!buf.getString().empty()) JI_LOG(INFO) << "responses " << pri_lattice.reveal().value;
 		    //if (!buf.getString().empty()) JI_LOG(INFO) << "responses " << buf.getString();
