@@ -104,14 +104,13 @@ if __name__ == "__main__":
             'local': True, 
             'offset': 1
             }
-    #anna_client = AnnaTcpClient(elb_address, elb_address, local=True, offset=2)
     anna_client = safe_create_anna_client(anna_client_args)
-    mpl_robot = MPLRobot(droplet, anna_client)
+    mpl_robot = MPLRobot(droplet, anna_client, function_name=None) # replace the None with the preregistered function_name
 
     times, costs = [0], [float('inf')] # initialize for usage later
     time_limit_in_seconds = 5
     start_time = time.time()
-    fns = mpl_robot.execute(num_lambdas=2)
+    fns = mpl_robot.execute(num_lambdas=1)
     while time.time() - start_time < time_limit_in_seconds:
         curr_time = time.time() - start_time
         priority, value = mpl_robot.poll()
@@ -119,7 +118,7 @@ if __name__ == "__main__":
             times.append(curr_time)
             costs.append(priority)
     print(times, costs)
-    for f in fns:
-        print(f.get())
+    #for f in fns:
+    #    print(f.get())
 
 

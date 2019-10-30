@@ -45,6 +45,7 @@ Options:
   -M, --max=X,Y,Z               Workspace maximum (se3 only)
   -d, --check-resolution=DIST   Collision checking resolution (0 means use default)
   -f, --float                   Use single-precision math instead of double (not currently enabled)
+  -T, --thread_id=thread_id     Needed if multiple anna clients are running from the same machine (might only be needed on localhost). Each thread_id should be unique.
 )";
 }
 
