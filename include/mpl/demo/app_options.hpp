@@ -129,7 +129,13 @@ namespace mpl::demo {
 
         std::string min_;
         std::string max_;
-
+	
+	std::string anna_address_;
+	std::string local_ip_;
+	std::string execution_id_;
+		
+	int thread_id_;
+	
         double timeLimit_{std::numeric_limits<double>::infinity()};
         double checkResolution_{0};
 

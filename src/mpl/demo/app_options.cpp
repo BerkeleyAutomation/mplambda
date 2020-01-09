@@ -45,6 +45,10 @@ Options:
   -M, --max=X,Y,Z               Workspace maximum (se3 only)
   -d, --check-resolution=DIST   Collision checking resolution (0 means use default)
   -f, --float                   Use single-precision math instead of double (not currently enabled)
+  -T, --thread_id=thread_id     Needed if multiple anna clients are running from the same machine (might only be needed on localhost). Each thread_id should be unique.
+  -A, --anna_address		Set Anna Routing ELB address
+  -l, --local_ip		Set Local Machine IP
+  -x, --execution_id		Unique number used to identify different execution rounds.
 )";
 }
 
@@ -67,11 +71,14 @@ mpl::demo::AppOptions::AppOptions(int argc, char *argv[]) {
         { "check-resolution", required_argument, NULL, 'd' },
         { "discretization", required_argument, NULL, 'd' }, // less-descriptive alieas
         { "float", no_argument, NULL, 'f' },
-        
+	{ "thread_id", required_argument, NULL, 'T' },
+	{ "anna_address", required_argument, NULL, 'A'},
+	{ "local_ip", required_argument, NULL, 'l'},
+	{ "execution_id", required_argument, NULL, 'x'},        
         { NULL, 0, NULL, 0 }
     };
 
-    for (int ch ; (ch = getopt_long(argc, argv, "S:a:c:j:e:E:r:g:G:s:m:M:I:t:d:f", longopts, NULL)) != -1 ; ) {
+    for (int ch ; (ch = getopt_long(argc, argv, "S:a:c:j:e:E:r:g:G:s:m:M:I:t:d:f:T:A:l:x", longopts, NULL)) != -1 ; ) {
         char *endp;
                 
         switch (ch) {
@@ -131,7 +138,19 @@ mpl::demo::AppOptions::AppOptions(int argc, char *argv[]) {
         case 'f':
             singlePrecision_ = true;
             break;
-        default:
+	case 'T':
+	    thread_id_ =  std::stoi(optarg);
+	    break;
+        case 'A':
+	    anna_address_ = optarg;
+	    break; 
+        case 'l':
+	    local_ip_ = optarg;
+	    break; 
+        case 'x':
+	    execution_id_ = optarg;
+	    break; 
+	default:
             usage(argv[0]);
             throw std::invalid_argument("see above");
         }            

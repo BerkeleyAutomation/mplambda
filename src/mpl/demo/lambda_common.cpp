@@ -91,10 +91,15 @@ namespace mpl::demo {
 
 
         std::vector<UserRoutingThread> threads;
-        Address addr("127.0.0.1");
+        Address addr(options.anna_address_);
         threads.push_back(UserRoutingThread(addr, 0));
-        Address ip("127.0.0.1");
-        KvsClient kvsClient(threads, ip, 0, 10000);
+        Address ip(options.local_ip_);
+        int thread_id = options.thread_id_;
+	std::cout << "thread id is " << thread_id << "\n";
+	std::cout << "anna address is " << options.anna_address_ << "\n";
+        std::cout << "local ip is " << options.local_ip_ << "\n";
+        std::cout << "execution id is " << options.execution_id_ << "\n";
+	KvsClient kvsClient(threads, ip, thread_id, 10000);
         // Comm comm_;
 
         if (options.coordinator(false).empty()) {
@@ -123,7 +128,7 @@ namespace mpl::demo {
         auto solution = planner.solution();
         assert(!solution);
 
-        const std::string solutionPathKey = "solution_path";
+        const std::string solutionPathKey = options.execution_id_;
 
         kvsClient.get_async(solutionPathKey);
 
