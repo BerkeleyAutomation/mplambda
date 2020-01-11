@@ -59,6 +59,7 @@ namespace mpl::demo {
         std::reverse(path.begin(), path.end());
         
         Distance cost = solution.cost();
+        JI_LOG(INFO) << "putting path with cost " << cost;
         // comm.sendPath(cost, elapsed, std::move(path));
         std::uint32_t elapsedMillis = std::chrono::duration_cast<std::chrono::milliseconds>(
             elapsed).count();
@@ -142,40 +143,50 @@ namespace mpl::demo {
 
                 std::vector<KeyResponse> responses = kvsClient.receive_async();
                 if (!responses.empty()) {
-                    kvsClient.get_async(solutionPathKey);
-                    
-                    Buffer buf(responses.front().tuples(0).payload());
-                    // process the payload, note: packet::parse will
-                    // not do anything if the buffer is empty.
-                    packet::parse(
-                        buf,
-                        [&] (auto&& path) {
-                            if constexpr (std::is_same_v<std::decay_t<decltype(path)>, packet::Path<State>>) {
-                                // do not update our solution if we
-                                // already have the a solution with
-                                // the same or better cost.
-                                if (solution.cost() <= path.cost())
-                                    return;
+                    JI_LOG(INFO) << "processing " << responses.size() << " async responses";
+                    bool getResponse = false;
+                    for (KeyResponse& resp : responses) {
+                        if (resp.type() != RequestType::GET)
+                            continue;
+                        getResponse = true;
+                                            
+                        Buffer buf(resp.tuples(0).payload());
+                        // process the payload, note: packet::parse will
+                        // not do anything if the buffer is empty.
+                        packet::parse(
+                            buf,
+                            [&] (auto&& path) {
+                                if constexpr (std::is_same_v<std::decay_t<decltype(path)>, packet::Path<State>>) {
+                                    JI_LOG(INFO) << "get response with cost = " << path.cost();
+                                    // do not update our solution if we
+                                    // already have the a solution with
+                                    // the same or better cost.
+                                    if (solution.cost() <= path.cost())
+                                         return;
                                     
-                                planner.addPath(path.cost(), path.path());
+                                    planner.addPath(path.cost(), path.path());
 
-                                // update our best solution if it has
-                                // the same cost as the solution we
-                                // just got from a peer.  If we have a
-                                // different solution, then we'll
-                                // update and send the solution after
-                                // the comm_.process().  This avoids
-                                // re-broadcasting the same solution.
-                                // (It is possible that incorporating
-                                // the new solution will lower the
-                                // cost)
-                                auto newSol = planner.solution();
-                                if (newSol.cost() == path.cost())
-                                    solution = newSol;
-                            } else {
-                                JI_LOG(WARN) << "received invalid path type!";
-                            }
-                        });
+                                    // update our best solution if it has
+                                    // the same cost as the solution we
+                                    // just got from a peer.  If we have a
+                                    // different solution, then we'll
+                                    // update and send the solution after
+                                    // the comm_.process().  This avoids
+                                    // re-broadcasting the same solution.
+                                    // (It is possible that incorporating
+                                    // the new solution will lower the
+                                    // cost)
+                                    auto newSol = planner.solution();
+                                    if (newSol.cost() == path.cost())
+                                        solution = newSol;
+                                } else {
+                                    JI_LOG(WARN) << "received invalid path type!";
+                                }
+                            });
+                    }
+                    
+                    if (getResponse)
+                        kvsClient.get_async(solutionPathKey);
                 }
 
                 
