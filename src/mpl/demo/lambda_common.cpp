@@ -48,7 +48,7 @@ namespace mpl::demo {
 
     template <class T, class Rep, class Period>
     void sendPath(
-        KvsClient& client, const std::string& solutionPathKey,
+        KvsClient* client, const std::string& solutionPathKey,
         std::chrono::duration<Rep, Period> elapsed, T& solution)
     {
         using State = typename T::State;
@@ -65,7 +65,9 @@ namespace mpl::demo {
             elapsed).count();
         packet::Path<State> packet(cost, elapsedMillis, std::move(path));
         Buffer buf = packet;
-        client.put_async(solutionPathKey, buf, LatticeType::PRIORITY);
+        Key k = solutionPathKey;
+        PriorityLattice<double, string> val(PriorityValuePair<double, string>(cost, buf.getString()));
+        string rid = client->put_async(k, serialize(val), LatticeType::PRIORITY);
     }
 
 
@@ -96,11 +98,11 @@ namespace mpl::demo {
         threads.push_back(UserRoutingThread(addr, 0));
         Address ip(options.local_ip_);
         int thread_id = options.thread_id_;
-	std::cout << "thread id is " << thread_id << "\n";
-	std::cout << "anna address is " << options.anna_address_ << "\n";
+        std::cout << "thread id is " << thread_id << "\n";
+        std::cout << "anna address is " << options.anna_address_ << "\n";
         std::cout << "local ip is " << options.local_ip_ << "\n";
         std::cout << "execution id is " << options.execution_id_ << "\n";
-	KvsClient kvsClient(threads, ip, thread_id, 10000);
+        KvsClient kvsClient(threads, ip, thread_id, 10000);
         // Comm comm_;
 
         if (options.coordinator(false).empty()) {
@@ -131,7 +133,7 @@ namespace mpl::demo {
 
         const std::string solutionPathKey = options.execution_id_;
 
-        kvsClient.get_async(solutionPathKey);
+        //kvsClient.get_async(solutionPathKey);
 
         if constexpr (Algorithm::asymptotically_optimal) {                
             // asymptotically-optimal planner, run for the
@@ -140,24 +142,29 @@ namespace mpl::demo {
             planner.solve([&] {
                 if (maxElapsedSolveTime.count() > 0 && Clock::now() - start > maxElapsedSolveTime)
                     return true;
-
+                kvsClient.get_async(solutionPathKey);
                 std::vector<KeyResponse> responses = kvsClient.receive_async();
                 if (!responses.empty()) {
-                    JI_LOG(INFO) << "processing " << responses.size() << " async responses";
+                    //JI_LOG(INFO) << "processing " << responses.size() << " async responses";
                     bool getResponse = false;
                     for (KeyResponse& resp : responses) {
-                        if (resp.type() != RequestType::GET)
+                        if (resp.type() == RequestType::PUT) {
+                            //JI_LOG(INFO) << "received PUT response for key " << resp.tuples(0).key() << " with error number " << resp.tuples(0).error();
                             continue;
+                        }
+                        //JI_LOG(INFO) << "received GET response for key " << resp.tuples(0).key() << " with error number " << resp.tuples(0).error();
                         getResponse = true;
                                             
-                        Buffer buf(resp.tuples(0).payload());
+                        PriorityLattice<double, string> pri_lattice = deserialize_priority(resp.tuples(0).payload());
+                        Buffer buf(pri_lattice.reveal().value);
+                        //Buffer buf(resp.tuples(0).payload());
                         // process the payload, note: packet::parse will
                         // not do anything if the buffer is empty.
                         packet::parse(
                             buf,
                             [&] (auto&& path) {
                                 if constexpr (std::is_same_v<std::decay_t<decltype(path)>, packet::Path<State>>) {
-                                    JI_LOG(INFO) << "get response with cost = " << path.cost();
+                                    //JI_LOG(INFO) << "get response with cost = " << path.cost();
                                     // do not update our solution if we
                                     // already have the a solution with
                                     // the same or better cost.
@@ -221,7 +228,7 @@ namespace mpl::demo {
                 auto s = planner.solution();
                 if (s < solution) {
                     // sendPath(comm_, Clock::now() - start, s);
-                    sendPath(kvsClient, solutionPathKey, Clock::now() - start, s);
+                    sendPath(&kvsClient, solutionPathKey, Clock::now() - start, s);
                     solution = s;
                 }
                 
@@ -259,7 +266,7 @@ namespace mpl::demo {
             
         if (auto finalSolution = planner.solution()) {
             if (finalSolution != solution)
-                sendPath(kvsClient, solutionPathKey, Clock::now() - start, finalSolution);
+                sendPath(&kvsClient, solutionPathKey, Clock::now() - start, finalSolution);
                 // sendPath(comm_, Clock::now() - start, finalSolution);
             finalSolution.visit([] (const State& q) { JI_LOG(INFO) << "  " << q; });
         }
@@ -342,3 +349,4 @@ namespace mpl::demo {
             throw std::invalid_argument("unknown algorithm: " + options.algorithm());
     }
 }
+
