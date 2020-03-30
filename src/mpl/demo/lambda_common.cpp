@@ -65,9 +65,9 @@ namespace mpl::demo {
             elapsed).count();
         packet::Path<State> packet(cost, elapsedMillis, std::move(path));
         Buffer buf = packet;
-        Key k = solutionPathKey;
-        PriorityLattice<double, string> val(PriorityValuePair<double, string>(cost, buf.getString()));
-        string rid = client->put_async(k, serialize(val), LatticeType::PRIORITY);
+  Key k = solutionPathKey;
+  PriorityLattice<double, string> val(PriorityValuePair<double, string>(cost, buf.getString()));
+  string rid = client->put_async(k, serialize(val), LatticeType::PRIORITY);
     }
 
 
@@ -96,13 +96,16 @@ namespace mpl::demo {
         std::vector<UserRoutingThread> threads;
         Address addr(options.anna_address_);
         threads.push_back(UserRoutingThread(addr, 0));
+  threads.push_back(UserRoutingThread(addr, 1));
+  threads.push_back(UserRoutingThread(addr, 2));
+  threads.push_back(UserRoutingThread(addr, 3));
         Address ip(options.local_ip_);
         int thread_id = options.thread_id_;
-        std::cout << "thread id is " << thread_id << "\n";
-        std::cout << "anna address is " << options.anna_address_ << "\n";
+  std::cout << "thread id is " << thread_id << "\n";
+  std::cout << "anna address is " << options.anna_address_ << "\n";
         std::cout << "local ip is " << options.local_ip_ << "\n";
         std::cout << "execution id is " << options.execution_id_ << "\n";
-        KvsClient kvsClient(threads, ip, thread_id, 10000);
+  KvsClient kvsClient(threads, ip, thread_id, 10000);
         // Comm comm_;
 
         if (options.coordinator(false).empty()) {
@@ -133,7 +136,7 @@ namespace mpl::demo {
 
         const std::string solutionPathKey = options.execution_id_;
 
-        //kvsClient.get_async(solutionPathKey);
+        kvsClient.get_async(solutionPathKey);
 
         if constexpr (Algorithm::asymptotically_optimal) {                
             // asymptotically-optimal planner, run for the
@@ -142,22 +145,22 @@ namespace mpl::demo {
             planner.solve([&] {
                 if (maxElapsedSolveTime.count() > 0 && Clock::now() - start > maxElapsedSolveTime)
                     return true;
-                kvsClient.get_async(solutionPathKey);
+    //kvsClient.get_async(solutionPathKey);
                 std::vector<KeyResponse> responses = kvsClient.receive_async();
                 if (!responses.empty()) {
                     //JI_LOG(INFO) << "processing " << responses.size() << " async responses";
                     bool getResponse = false;
                     for (KeyResponse& resp : responses) {
                         if (resp.type() == RequestType::PUT) {
-                            //JI_LOG(INFO) << "received PUT response for key " << resp.tuples(0).key() << " with error number " << resp.tuples(0).error();
+          //JI_LOG(INFO) << "received PUT response for key " << resp.tuples(0).key() << " with error number " << resp.tuples(0).error();
                             continue;
-                        }
-                        //JI_LOG(INFO) << "received GET response for key " << resp.tuples(0).key() << " with error number " << resp.tuples(0).error();
+      }
+      //JI_LOG(INFO) << "received GET response for key " << resp.tuples(0).key() << " with error number " << resp.tuples(0).error();
                         getResponse = true;
                                             
-                        PriorityLattice<double, string> pri_lattice = deserialize_priority(resp.tuples(0).payload());
+      PriorityLattice<double, string> pri_lattice = deserialize_priority(resp.tuples(0).payload());
                         Buffer buf(pri_lattice.reveal().value);
-                        //Buffer buf(resp.tuples(0).payload());
+      //Buffer buf(resp.tuples(0).payload());
                         // process the payload, note: packet::parse will
                         // not do anything if the buffer is empty.
                         packet::parse(
@@ -291,6 +294,7 @@ namespace mpl::demo {
         // comm_.sendDone();
         // TODO: we need to send something
     }
+
 
 
     template <class Algorithm, class S>
