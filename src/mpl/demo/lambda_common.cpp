@@ -22,8 +22,7 @@ namespace mpl::demo {
     struct ConvertState<
         std::tuple<Eigen::Quaternion<R>, Eigen::Matrix<R, 3, 1>>,
         std::tuple<Eigen::Quaternion<S>, Eigen::Matrix<S, 3, 1>>>
-        : std::true_type
-    {
+        : std::true_type {
         using Result = std::tuple<Eigen::Quaternion<R>, Eigen::Matrix<R, 3, 1>>;
         using Source = std::tuple<Eigen::Quaternion<S>, Eigen::Matrix<S, 3, 1>>;
         
@@ -36,8 +35,7 @@ namespace mpl::demo {
 
     template <class R, class S, int dim>
     struct ConvertState<Eigen::Matrix<R, dim, 1>, Eigen::Matrix<S, dim, 1>>
-        : std::true_type
-    {
+        : std::true_type {
         using Result = Eigen::Matrix<R, dim, 1>;
         using Source = Eigen::Matrix<S, dim, 1>;
 
@@ -49,8 +47,7 @@ namespace mpl::demo {
     template <class T, class Rep, class Period>
     void sendPath(
         KvsClient* client, const std::string& solutionPathKey,
-        std::chrono::duration<Rep, Period> elapsed, T& solution)
-    {
+        std::chrono::duration<Rep, Period> elapsed, T& solution) {
         using State = typename T::State;
         using Distance = typename T::Distance;
         
@@ -65,9 +62,9 @@ namespace mpl::demo {
             elapsed).count();
         packet::Path<State> packet(cost, elapsedMillis, std::move(path));
         Buffer buf = packet;
-  Key k = solutionPathKey;
-  PriorityLattice<double, string> val(PriorityValuePair<double, string>(cost, buf.getString()));
-  string rid = client->put_async(k, serialize(val), LatticeType::PRIORITY);
+        Key k = solutionPathKey;
+        TopKPriorityLattice<double, string, kNumShortestPaths> top_k_priority_lattice(std::set<PriorityValuePair<double, string>>({PriorityValuePair<double, string>(cost, buf.getString())}));
+        string rid = client->put_async(k, serialize(top_k_priority_lattice), LatticeType::TOPK_PRIORITY);
     }
 
 
@@ -95,24 +92,19 @@ namespace mpl::demo {
 
         std::vector<UserRoutingThread> threads;
         Address addr(options.anna_address_);
-        threads.push_back(UserRoutingThread(addr, 0));
-  threads.push_back(UserRoutingThread(addr, 1));
-  threads.push_back(UserRoutingThread(addr, 2));
-  threads.push_back(UserRoutingThread(addr, 3));
+        for (unsigned tid = 0; tid < 4; tid ++) {
+          threads.push_back(UserRoutingThread(addr, tid));
+        }
         Address ip(options.local_ip_);
         int thread_id = options.thread_id_;
-  std::cout << "thread id is " << thread_id << "\n";
-  std::cout << "anna address is " << options.anna_address_ << "\n";
+        std::cout << "thread id is " << thread_id << "\n";
+        std::cout << "anna address is " << options.anna_address_ << "\n";
         std::cout << "local ip is " << options.local_ip_ << "\n";
         std::cout << "execution id is " << options.execution_id_ << "\n";
-  KvsClient kvsClient(threads, ip, thread_id, 10000);
-        // Comm comm_;
+        KvsClient kvsClient(threads, ip, thread_id, 10000);
 
         if (options.coordinator(false).empty()) {
             JI_LOG(WARN) << "no coordinator set";
-        // } else {
-        //     comm_.setProblemId(options.problemId());
-        //     comm_.connect(options.coordinator());
         }
 
         JI_LOG(INFO) << "setting up planner";
@@ -145,97 +137,58 @@ namespace mpl::demo {
             planner.solve([&] {
                 if (maxElapsedSolveTime.count() > 0 && Clock::now() - start > maxElapsedSolveTime)
                     return true;
-    //kvsClient.get_async(solutionPathKey);
                 std::vector<KeyResponse> responses = kvsClient.receive_async();
                 if (!responses.empty()) {
                     //JI_LOG(INFO) << "processing " << responses.size() << " async responses";
                     bool getResponse = false;
                     for (KeyResponse& resp : responses) {
                         if (resp.type() == RequestType::PUT) {
-          //JI_LOG(INFO) << "received PUT response for key " << resp.tuples(0).key() << " with error number " << resp.tuples(0).error();
+                            //JI_LOG(INFO) << "received PUT response for key " << resp.tuples(0).key() << " with error number " << resp.tuples(0).error();
                             continue;
-      }
-      //JI_LOG(INFO) << "received GET response for key " << resp.tuples(0).key() << " with error number " << resp.tuples(0).error();
+                        }
+                        //JI_LOG(INFO) << "received GET response for key " << resp.tuples(0).key() << " with error number " << resp.tuples(0).error();
                         getResponse = true;
-                                            
-      PriorityLattice<double, string> pri_lattice = deserialize_priority(resp.tuples(0).payload());
-                        Buffer buf(pri_lattice.reveal().value);
-      //Buffer buf(resp.tuples(0).payload());
-                        // process the payload, note: packet::parse will
-                        // not do anything if the buffer is empty.
-                        packet::parse(
-                            buf,
-                            [&] (auto&& path) {
-                                if constexpr (std::is_same_v<std::decay_t<decltype(path)>, packet::Path<State>>) {
-                                    //JI_LOG(INFO) << "get response with cost = " << path.cost();
-                                    // do not update our solution if we
-                                    // already have the a solution with
-                                    // the same or better cost.
-                                    if (solution.cost() <= path.cost())
-                                         return;
-                                    
-                                    planner.addPath(path.cost(), path.path());
+                                                
+                        TopKPriorityLattice<double, string, kNumShortestPaths> top_k_priority_lattice = deserialize_top_k_priority(resp.tuples(0).payload());
 
-                                    // update our best solution if it has
-                                    // the same cost as the solution we
-                                    // just got from a peer.  If we have a
-                                    // different solution, then we'll
-                                    // update and send the solution after
-                                    // the comm_.process().  This avoids
-                                    // re-broadcasting the same solution.
-                                    // (It is possible that incorporating
-                                    // the new solution will lower the
-                                    // cost)
-                                    auto newSol = planner.solution();
-                                    if (newSol.cost() == path.cost())
-                                        solution = newSol;
-                                } else {
-                                    JI_LOG(WARN) << "received invalid path type!";
-                                }
-                            });
+                        for (const auto& pv : top_k_priority_lattice.reveal()) {
+                          Buffer buf(pv.value);
+                          packet::parse(
+                              buf,
+                              [&] (auto&& path) {
+                                  if constexpr (std::is_same_v<std::decay_t<decltype(path)>, packet::Path<State>>) {
+                                      
+                                      planner.addPath(path.cost(), path.path());
+
+                                      // update our best solution if it has
+                                      // the same cost as the solution we
+                                      // just got from a peer.  If we have a
+                                      // different solution, then we'll
+                                      // update and send the solution after
+                                      // the comm_.process().  This avoids
+                                      // re-broadcasting the same solution.
+                                      // (It is possible that incorporating
+                                      // the new solution will lower the
+                                      // cost)
+                                      auto newSol = planner.solution();
+                                      if (newSol.cost() == path.cost())
+                                          solution = newSol;
+                                  } else {
+                                      JI_LOG(WARN) << "received invalid path type!";
+                                  }
+                          });
+                        }
                     }
                     
                     if (getResponse)
                         kvsClient.get_async(solutionPathKey);
                 }
-
-                
-                // comm_.process(
-                //     [&] (auto cost, auto&& pktPath) {
-                //         using Path = std::decay_t<decltype(pktPath)>;
-                //         using PathState = typename Path::value_type;
-                //         if constexpr (std::is_same_v<State, PathState>) {
-                //             planner.addPath(cost, std::forward<decltype(pktPath)>(pktPath));
-                //         } else if constexpr (ConvertState<State,PathState>::value) {
-                //             std::vector<State> path;
-                //             path.reserve(pktPath.size());
-                //             for (auto& q : pktPath)
-                //                 path.emplace_back(ConvertState<State,PathState>::apply(q));
-                //             planner.addPath(cost, std::move(path));
-                //         } else {
-                //             JI_LOG(WARN) << "received incompatible path type!";
-                //             return;
-                //         }
-                        
-                //         // update our best solution if it has the same
-                //         // cost as the solution we just got from a
-                //         // peer.  If we have a different solution,
-                //         // then we'll update and send the solution
-                //         // after the comm_.process().  This avoids
-                //         // re-broadcasting the same solution.
-                //         auto newSol = planner.solution();
-                //         if (newSol.cost() == cost)
-                //             solution = newSol;
-                //     });
                 
                 auto s = planner.solution();
                 if (s < solution) {
-                    // sendPath(comm_, Clock::now() - start, s);
                     sendPath(&kvsClient, solutionPathKey, Clock::now() - start, s);
                     solution = s;
                 }
-                
-                // return comm_.isDone();
                 return false;
             });
         } else {
@@ -273,26 +226,6 @@ namespace mpl::demo {
                 // sendPath(comm_, Clock::now() - start, finalSolution);
             finalSolution.visit([] (const State& q) { JI_LOG(INFO) << "  " << q; });
         }
-
-#if 0   // write the end-effector vertices to stdout
-        if constexpr (std::is_same_v<State, Eigen::Matrix<double, 8, 1>>) {
-            // std::map<const State*, std::size_t> stateIndex;
-            planner.visitTree([&] (const State& a, const State& b) {
-                demo::FetchRobot<double> robot(a);
-                Eigen::IOFormat fmt(Eigen::StreamPrecision, Eigen::DontAlignCols, " ", " ");
-                std::cout << "v " << robot.getEndEffectorFrame().translation().format(fmt) << std::endl;
-                // stateIndex.emplace(&a, stateIndex.size() + 1);
-            });
-            // planner.visitTree([&] (const State& a, const State& b) {
-            //     auto ait = stateIndex.find(&a);
-            //     auto bit = stateIndex.find(&b);
-            //     std::cout << "l " << ait->second << " " << bit->second << " " << ait->second << std::endl;
-            // });
-        }
-#endif
-
-        // comm_.sendDone();
-        // TODO: we need to send something
     }
 
 
