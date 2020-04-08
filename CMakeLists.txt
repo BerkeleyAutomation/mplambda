@@ -78,8 +78,8 @@ else ()
 
     ## this is the command to run in order to create the full lambda zip:
     #add_custom_target(mpl_lambda_aws_zip
-    #	COMMAND zip -ur9 mpl_lambda_aws.zip resources
-    #	DEPENDS aws-lambda-package-mpl_lambda_aws)
+    #   COMMAND zip -ur9 mpl_lambda_aws.zip resources
+    #   DEPENDS aws-lambda-package-mpl_lambda_aws)
 
     ## After creating the lambda zip, we can upload it using:
     #add_custom_target(update-function-code
