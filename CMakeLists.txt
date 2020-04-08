@@ -31,13 +31,22 @@ find_package(Eigen3 3.3 REQUIRED NO_MODULE)
 INCLUDE(FindProtobuf)
 FIND_PACKAGE(Protobuf REQUIRED)
 LINK_DIRECTORIES(
+    ./build
     ../anna/build
     ../anna/build/common/vendor/yamlcpp/src/yamlcpp
     ../anna/build/common/vendor/zeromq/src/zeromq/src/.libs)
+PROTOBUF_GENERATE_CPP(PROTO_SRC PROTO_HEADER
+  ../anna/common/proto/anna.proto
+  ../anna/common/proto/shared.proto
+  ../anna/include/proto/metadata.proto
+)
+
+ADD_LIBRARY(anna-motion-proto ${PROTO_HEADER} ${PROTO_SRC})
+
 SET(ANNA_LIBRARIES
     protobuf
-    anna-proto
     zmq
+    anna-motion-proto
     hydro-zmq
     yaml-cpp
 )
